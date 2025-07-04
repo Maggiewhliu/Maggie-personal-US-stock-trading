@@ -1,0 +1,65 @@
+import requests
+from datetime import datetime
+
+# 取得 TSLA 收盤價
+def get_tsla_close():
+    url = "https://query1.finance.yahoo.com/v8/finance/chart/TSLA"
+    res = requests.get(url)
+    data = res.json()
+    closes = data["chart"]["result"][0]["indicators"]["quote"][0]["close"]
+    close_price = [c for c in closes if c is not None][-1]
+    return round(close_price, 2)
+
+# 暫時手動指定 Max Pain，後續會加自動爬蟲
+def get_max_pain():
+    return 315.0
+
+# 寫入 Notion
+def write_to_notion(token, db_id, close_price, max_pain):
+    url = "https://api.notion.com/v1/pages"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Notion-Version": "2022-06-28",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "parent": { "database_id": db_id },
+        "properties": {
+            "📅 日期": {
+                "date": { "start": datetime.now().strftime("%Y-%m-%d") }
+            },
+            "收盤價": {
+                "number": close_price
+            },
+            "Max Pain": {
+                "number": max_pain
+            }
+        }
+    }
+    res = requests.post(url, headers=headers, json=payload)
+    return res.status_code
+
+# 發送 Telegram 通知
+def send_telegram(token, chat_id, msg):
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    data = {
+        "chat_id": chat_id,
+        "text": msg
+    }
+    requests.post(url, data=data)
+
+# 主程式
+if __name__ == "__main__":
+    NOTION_TOKEN = os.environ["NOTION_TOKEN"]
+    NOTION_DB_ID = os.environ["NOTION_DB_ID"]
+    TG_TOKEN = os.environ["TG_TOKEN"]
+    TG_CHAT_ID = os.environ["TG_CHAT_ID"]
+
+    close = get_tsla_close()
+    pain = get_max_pain()
+    notion_status = write_to_notion(NOTION_TOKEN, NOTION_DB_ID, close, pain)
+
+    if notion_status == 200:
+        send_telegram(TG_TOKEN, TG_CHAT_ID, f"✅ TSLA 已更新\n收盤價：${close}\nMax Pain：${pain}\n已寫入 Notion。")
+    else:
+        send_telegram(TG_TOKEN, TG_CHAT_ID, "❌ Notion 寫入失敗，請檢查 API。")
