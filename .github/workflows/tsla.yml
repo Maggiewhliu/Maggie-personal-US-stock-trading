@@ -2,7 +2,7 @@ name: TSLA Monitor
 
 on:
   schedule:
-    - cron: '0 23 * * 1-5'  # 每週一至五台灣時間早上 7:00 執行
+    - cron: '0 23 * * 1-5'  # 台灣早上 7:00 執行（UTC 23:00）
   workflow_dispatch:
 
 jobs:
