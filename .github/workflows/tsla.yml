@@ -1,7 +1,8 @@
 name: TSLA Monitor
 
-schedule:
-    - cron: '0 23 * * 1-5'  # 台灣時間早上 7:00 執行
+on:
+  schedule:
+    - cron: '0 23 * * 1-5'  # 每週一至五台灣時間早上 7:00 執行
   workflow_dispatch:
 
 jobs:
@@ -26,4 +27,3 @@ jobs:
           NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
-        run: python tsla_bot.py
