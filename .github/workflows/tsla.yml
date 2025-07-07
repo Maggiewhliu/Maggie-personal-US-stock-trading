@@ -21,6 +21,7 @@ jobs:
         run: pip install requests
 
       - name: Run TSLA bot
+        working-directory: ./
         run: python tsla_bot.py
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
