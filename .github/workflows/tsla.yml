@@ -1,0 +1,40 @@
+name: TSLA Monitor
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # 每6小時執行一次
+  workflow_dispatch:  # 允許手動觸發
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests beautifulsoup4 lxml
+        
+    - name: Run TSLA monitoring script
+      run: |
+        python tsla_bot.py
+      env:
+        PYTHONPATH: ${{ github.workspace }}
+        
+    - name: Debug on failure
+      if: failure()
+      run: |
+        echo "Script failed. Checking Python environment..."
+        python --version
+        pip list
+        ls -la
+        echo "Checking if script exists..."
+        test -f tsla_bot.py && echo "Script exists" || echo "Script not found"
