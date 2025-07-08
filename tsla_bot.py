@@ -1,102 +1,54 @@
 #!/usr/bin/env python3
 """
-Telegram 診斷腳本
+超簡化 Telegram 測試
 """
 import sys
-import requests
 import os
 
-def diagnose_telegram():
-    """診斷 Telegram 設定"""
-    print("🔍 開始 Telegram 診斷...")
-    
-    telegram_token = os.getenv('TELEGRAM_BOT_TOKEN')
-    telegram_chat_id = os.getenv('TELEGRAM_CHAT_ID')
-    
-    print(f"📋 Bot Token: {'已設定' if telegram_token else '未設定'}")
-    print(f"📋 Chat ID: {'已設定' if telegram_chat_id else '未設定'}")
-    
-    if not telegram_token:
-        print("❌ TELEGRAM_BOT_TOKEN 未設定")
-        return False
-    
-    if not telegram_chat_id:
-        print("❌ TELEGRAM_CHAT_ID 未設定")
-        return False
-    
-    # 測試 Bot 資訊
-    try:
-        print("🤖 測試 Bot 資訊...")
-        url = f"https://api.telegram.org/bot{telegram_token}/getMe"
-        response = requests.get(url, timeout=10)
-        
-        if response.status_code == 200:
-            bot_info = response.json()
-            if bot_info['ok']:
-                print(f"✅ Bot 正常: {bot_info['result']['first_name']}")
-            else:
-                print(f"❌ Bot 錯誤: {bot_info}")
-                return False
-        else:
-            print(f"❌ Bot Token 可能無效: {response.status_code}")
-            return False
-            
-    except Exception as e:
-        print(f"❌ Bot 測試失敗: {e}")
-        return False
-    
-    # 測試發送訊息
-    try:
-        print("📤 測試發送訊息...")
-        url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
-        
-        message = f"""
-🔍 TELEGRAM 診斷測試
-📅 時間: {requests.get('http://worldtimeapi.org/api/timezone/Asia/Taipei').json()['datetime'][:19]}
-✅ GitHub Actions 正常
-🤖 Bot Token 有效
-📱 Chat ID: {telegram_chat_id}
-        """
-        
-        data = {
-            "chat_id": telegram_chat_id,
-            "text": message
-        }
-        
-        response = requests.post(url, json=data, timeout=10)
-        
-        print(f"📤 發送狀態碼: {response.status_code}")
-        print(f"📤 回應內容: {response.text[:200]}...")
-        
-        if response.status_code == 200:
-            result = response.json()
-            if result['ok']:
-                print("✅ 訊息發送成功！")
-                return True
-            else:
-                print(f"❌ 發送失敗: {result}")
-                return False
-        else:
-            print(f"❌ HTTP 錯誤: {response.status_code}")
-            return False
-            
-    except Exception as e:
-        print(f"❌ 發送測試失敗: {e}")
-        return False
-
 def main():
+    print("🔍 開始簡化診斷...")
+    
     try:
-        success = diagnose_telegram()
+        # 檢查環境變數
+        telegram_token = os.getenv('TELEGRAM_BOT_TOKEN')
+        telegram_chat_id = os.getenv('TELEGRAM_CHAT_ID')
         
-        if success:
-            print("🎉 Telegram 設定完全正常！")
-            sys.exit(0)
-        else:
-            print("💥 Telegram 設定有問題，請檢查設定")
+        print(f"📋 Bot Token 長度: {len(telegram_token) if telegram_token else 0}")
+        print(f"📋 Chat ID: {telegram_chat_id}")
+        
+        if not telegram_token:
+            print("❌ TELEGRAM_BOT_TOKEN 環境變數未設定")
             sys.exit(1)
             
+        if not telegram_chat_id:
+            print("❌ TELEGRAM_CHAT_ID 環境變數未設定")
+            sys.exit(1)
+        
+        print("✅ 環境變數檢查通過")
+        
+        # 嘗試導入 requests
+        try:
+            import requests
+            print("✅ requests 模組正常")
+        except ImportError as e:
+            print(f"❌ requests 導入失敗: {e}")
+            sys.exit(1)
+        
+        # 簡單的網路測試
+        try:
+            response = requests.get("https://httpbin.org/status/200", timeout=5)
+            print(f"✅ 網路連接正常: {response.status_code}")
+        except Exception as e:
+            print(f"❌ 網路連接失敗: {e}")
+            sys.exit(1)
+        
+        print("🎉 基礎檢查全部通過")
+        sys.exit(0)
+        
     except Exception as e:
-        print(f"❌ 診斷失敗: {e}")
+        print(f"❌ 診斷過程出錯: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 if __name__ == "__main__":
