@@ -27,7 +27,11 @@ jobs:
       run: |
         python tsla_bot.py
       env:
-        PYTHONPATH: ${{ github.workspace }}
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        COST_BASIS: ${{ secrets.COST_BASIS }}
+        NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+        NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
         
     - name: Debug on failure
       if: failure()
