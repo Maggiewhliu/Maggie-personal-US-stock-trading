@@ -1,49 +1,62 @@
-name: TSLA Monitor
+name: TSLA Market Maker Auto Monitor
 
 on:
+  # 每6小時自動執行
   schedule:
-    - cron: '0 0 * * *'    # 台灣時間 08:00 - 每日早報
-    - cron: '0 6 * * *'    # 台灣時間 14:00 - 下午分析
-    - cron: '0 12 * * *'   # 台灣時間 20:00 - 晚間分析
-    - cron: '0 18 * * *'   # 台灣時間 02:00 - 深夜分析
-    - cron: '30 12 * * 1-5'  # 美股盤前分析（美東 08:30）
-    - cron: '30 20 * * 1-5'  # 美股收盤後分析（美東 16:30）
-  workflow_dispatch:  # 允許手動觸發
+    - cron: '0 */6 * * *'  # 每天 00:00, 06:00, 12:00, 18:00 UTC
+  
+  # 手動觸發
+  workflow_dispatch:
+  
+  # Push 時也觸發（用於測試）
+  push:
+    branches: [ main ]
 
 jobs:
-  run-bot:
+  tsla-analysis:
     runs-on: ubuntu-latest
     
     steps:
-    - name: Checkout code
+    - name: 📥 Checkout repository
       uses: actions/checkout@v4
-      
-    - name: Set up Python
+    
+    - name: 🐍 Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.9'
-        
-    - name: Install dependencies
+    
+    - name: 📦 Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install requests beautifulsoup4 lxml
-        
-    - name: Run TSLA monitoring script
-      run: |
-        python tsla_bot.py
+        pip install requests python-dateutil
+    
+    - name: 🚀 Run TSLA Market Maker Analysis
       env:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        COST_BASIS: ${{ secrets.COST_BASIS }}
         NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
         NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
-        
-    - name: Debug on failure
+      run: |
+        echo "🎯 開始 TSLA Market Maker 分析..."
+        echo "⏰ 執行時間: $(date)"
+        echo "🌍 時區: UTC"
+        python tsla_mm_analyzer.py
+    
+    - name: 📊 Log execution results
+      run: |
+        echo "✅ TSLA 分析執行完成"
+        echo "📅 完成時間: $(date)"
+        echo "🔄 下次執行: 6小時後"
+    
+    - name: 🎉 Success notification
+      if: success()
+      run: |
+        echo "🎯 TSLA Market Maker 監控系統運行成功！"
+        echo "📱 報告已發送到 Telegram"
+        echo "📝 資料已更新到 Notion（如已配置）"
+    
+    - name: ❌ Failure notification
       if: failure()
       run: |
-        echo "Script failed. Checking Python environment..."
-        python --version
-        pip list
-        ls -la
-        echo "Checking if script exists..."
-        test -f tsla_bot.py && echo "Script exists" || echo "Script not found"
+        echo "⚠️ TSLA 監控系統執行失敗"
+        echo "請檢查 GitHub Actions 日誌"
