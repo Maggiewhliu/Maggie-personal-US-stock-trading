@@ -1,14 +1,9 @@
 name: TSLA Market Maker Auto Monitor
 
 on:
-  # 每6小時自動執行
   schedule:
-    - cron: '0 */6 * * *'  # 每天 00:00, 06:00, 12:00, 18:00 UTC
-  
-  # 手動觸發
+    - cron: '0 */6 * * *'
   workflow_dispatch:
-  
-  # Push 時也觸發（用於測試）
   push:
     branches: [ main ]
 
@@ -17,46 +12,32 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - name: 📥 Checkout repository
+    - name: Checkout repository
       uses: actions/checkout@v4
     
-    - name: 🐍 Set up Python
+    - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.9'
     
-    - name: 📦 Install dependencies
+    - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install requests python-dateutil
     
-    - name: 🚀 Run TSLA Market Maker Analysis
+    - name: Run TSLA Market Maker Analysis
       env:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
         NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
       run: |
-        echo "🎯 開始 TSLA Market Maker 分析..."
-        echo "⏰ 執行時間: $(date)"
-        echo "🌍 時區: UTC"
+        echo "Starting TSLA Market Maker Analysis..."
+        echo "Execution time: $(date)"
         python tsla_mm_analyzer.py
     
-    - name: 📊 Log execution results
+    - name: Log execution results
       run: |
-        echo "✅ TSLA 分析執行完成"
-        echo "📅 完成時間: $(date)"
-        echo "🔄 下次執行: 6小時後"
-    
-    - name: 🎉 Success notification
-      if: success()
-      run: |
-        echo "🎯 TSLA Market Maker 監控系統運行成功！"
-        echo "📱 報告已發送到 Telegram"
-        echo "📝 資料已更新到 Notion（如已配置）"
-    
-    - name: ❌ Failure notification
-      if: failure()
-      run: |
-        echo "⚠️ TSLA 監控系統執行失敗"
-        echo "請檢查 GitHub Actions 日誌"
+        echo "TSLA analysis execution completed"
+        echo "Completion time: $(date)"
+        echo "Next execution: in 6 hours"
