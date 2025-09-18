@@ -1,58 +1,54 @@
-name: Multi-Stock Quad Daily Analysis
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+調試版多股票分析系統
+"""
+import sys
+import os
+import requests
+from datetime import datetime
 
-on:
-  schedule:
-    # 盤前分析 - 04:00 EST (美東時間)
-    - cron: '0 9 * * 1-5'
-    # 開盤後分析 - 09:45 EST
-    - cron: '45 14 * * 1-5'
-    # 午盤分析 - 14:00 EST
-    - cron: '0 19 * * 1-5'
-    # 盤後分析 - 16:30 EST
-    - cron: '30 21 * * 1-5'
-  
-  # 允許手動觸發
-  workflow_dispatch:
-  
-  # 測試用 - push時也會觸發
-  push:
-    branches: [ main ]
+def main():
+    print("🚀 調試版多股票分析系統啟動")
+    
+    # 檢查環境變數
+    telegram_token = os.getenv('TELEGRAM_BOT_TOKEN')
+    telegram_chat_id = os.getenv('TELEGRAM_CHAT_ID') 
+    analysis_symbols = os.getenv('ANALYSIS_SYMBOLS', 'TSLA')
+    
+    print(f"Telegram Token存在: {'是' if telegram_token else '否'}")
+    print(f"Chat ID存在: {'是' if telegram_chat_id else '否'}")
+    print(f"分析股票: {analysis_symbols}")
+    
+    if not telegram_token or not telegram_chat_id:
+        print("❌ 缺少必要的環境變數")
+        sys.exit(1)
+    
+    # 簡單測試訊息
+    test_message = f"""🔧 系統測試
+📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+📊 目標股票: {analysis_symbols}
+✅ 系統正常運行"""
+    
+    try:
+        telegram_url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
+        telegram_data = {
+            "chat_id": telegram_chat_id,
+            "text": test_message,
+            "parse_mode": "Markdown"
+        }
+        
+        response = requests.post(telegram_url, json=telegram_data, timeout=10)
+        
+        if response.status_code == 200:
+            print("✅ 測試訊息發送成功")
+        else:
+            print(f"❌ 訊息發送失敗: {response.status_code}")
+            print(response.text)
+            
+    except Exception as e:
+        print(f"❌ 錯誤: {e}")
+        sys.exit(1)
 
-jobs:
-  multi-stock-analysis:
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
-    
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install requests aiohttp pytz beautifulsoup4 lxml
-    
-    - name: Run Multi-Stock Analysis
-      env:
-        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        ANALYSIS_SYMBOLS: 'TSLA,AAPL,MSFT'
-        POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
-        FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
-      run: |
-        echo "Starting Multi-Stock Quad Daily Analysis..."
-        echo "Execution time (UTC): $(date -u)"
-        echo "Execution time (EST): $(TZ='America/New_York' date)"
-        echo "Target symbols: $ANALYSIS_SYMBOLS"
-        python multi_stock_analyzer.py
-    
-    - name: Log execution results
-      run: |
-        echo "Multi-stock analysis execution completed"
-        echo "Completion time (UTC): $(date -u)"
-        echo "Completion time (EST): $(TZ='America/New_York' date)"
-        echo "Next execution: Check cron schedule"
+if __name__ == "__main__":
+    main()
