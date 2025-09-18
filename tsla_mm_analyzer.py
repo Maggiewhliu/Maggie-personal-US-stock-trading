@@ -1,409 +1,509 @@
 #!/usr/bin/env python3
 """
-TSLA Market Maker 專業分析系統 - GitHub Actions 版本
-包含 Max Pain Theory、Gamma Exposure、Delta Flow 等專業功能
+TSLA四次日報分析系統
+每日四次專業分析：盤前、開盤後、午盤、盤後
+包含期權策略建議（風險分級）
 """
 import sys
 import requests
 import os
 import json
 import math
+import asyncio
+import aiohttp
 from datetime import datetime, timedelta
 from typing import Dict, List, Tuple, Optional
+import pytz
 
-class TSLAMarketMakerAnalyzer:
+class TSLAQuadDailyAnalyzer:
     def __init__(self):
+        # API Keys
+        self.polygon_key = "u2_7EiBlQG9CBqpB1AWDnzQ5TSl6zK4l"
+        self.finnhub_key = "d33ke01r01qib1p1dvu0d33ke01r01qib1p1dvug"
         self.telegram_token = os.getenv('TELEGRAM_BOT_TOKEN')
         self.telegram_chat_id = os.getenv('TELEGRAM_CHAT_ID')
-        self.notion_token = os.getenv('NOTION_TOKEN')
-        self.notion_database_id = os.getenv('NOTION_DATABASE_ID')
         
-        # 驗證必要的環境變數
+        # 時區設定
+        self.est = pytz.timezone('US/Eastern')
+        self.taipei = pytz.timezone('Asia/Taipei')
+        
         if not self.telegram_token or not self.telegram_chat_id:
             raise ValueError("缺少 Telegram 配置")
     
-    def get_stock_data(self) -> Dict:
-        """獲取 TSLA 基本股價數據"""
+    def get_current_session(self) -> str:
+        """判斷當前市場時段"""
+        now_est = datetime.now(self.est)
+        hour = now_est.hour
+        minute = now_est.minute
+        current_time = hour + minute/60
+        
+        if 4 <= current_time < 9.5:
+            return "pre_market"
+        elif 9.5 <= current_time < 14:
+            return "market_open"
+        elif 14 <= current_time < 16:
+            return "afternoon"
+        else:
+            return "after_market"
+    
+    def get_next_friday(self) -> str:
+        """獲取下個週五（期權到期日）"""
+        today = datetime.now()
+        days_until_friday = (4 - today.weekday()) % 7
+        if days_until_friday == 0 and today.weekday() == 4:
+            days_until_friday = 7
+        next_friday = today + timedelta(days=days_until_friday)
+        return next_friday.strftime('%Y-%m-%d')
+    
+    async def get_tsla_realtime_data(self) -> Dict:
+        """獲取TSLA實時數據"""
+        symbol = "TSLA"
+        
+        # 優先使用Polygon實時數據
         try:
-            url = "https://query1.finance.yahoo.com/v8/finance/chart/TSLA"
-            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-            
-            response = requests.get(url, headers=headers, timeout=10)
-            data = response.json()
-            result = data['chart']['result'][0]
-            
-            current_price = result['meta']['regularMarketPrice']
-            previous_close = result['meta']['previousClose']
-            volume = result['meta']['regularMarketVolume']
-            
-            change = current_price - previous_close
-            change_percent = (change / previous_close) * 100
-            
-            return {
-                'current_price': current_price,
-                'previous_close': previous_close,
-                'change': change,
-                'change_percent': change_percent,
-                'volume': volume,
-                'timestamp': datetime.now()
-            }
+            url = f"https://api.polygon.io/v2/aggs/ticker/{symbol}/prev?adjusted=true&apikey={self.polygon_key}"
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=10) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data.get('results'):
+                            result = data['results'][0]
+                            
+                            # 獲取實時價格（如果市場開盤）
+                            realtime_url = f"https://api.polygon.io/v1/last/stocks/{symbol}?apikey={self.polygon_key}"
+                            async with session.get(realtime_url, timeout=5) as rt_response:
+                                if rt_response.status == 200:
+                                    rt_data = await rt_response.json()
+                                    current_price = rt_data.get('last', {}).get('price', result['c'])
+                                else:
+                                    current_price = result['c']
+                            
+                            previous_close = result['c']
+                            change = current_price - previous_close
+                            change_percent = (change / previous_close) * 100
+                            
+                            return {
+                                'symbol': symbol,
+                                'current_price': float(current_price),
+                                'previous_close': float(previous_close),
+                                'change': change,
+                                'change_percent': change_percent,
+                                'volume': int(result['v']),
+                                'high': float(result['h']),
+                                'low': float(result['l']),
+                                'timestamp': datetime.now()
+                            }
         except Exception as e:
-            print(f"❌ 股價獲取失敗: {e}")
-            # 返回模擬數據以防API失敗
-            return {
-                'current_price': 248.50,
-                'previous_close': 245.00,
-                'change': 3.50,
-                'change_percent': 1.43,
-                'volume': 45000000,
-                'timestamp': datetime.now()
-            }
-    
-    def calculate_max_pain(self, stock_price: float) -> Dict:
-        """計算 Max Pain Theory 分析"""
-        # 模擬 Max Pain 計算（實際需要期權鏈數據）
-        strike_range = range(int(stock_price * 0.8), int(stock_price * 1.2), 5)
+            print(f"Polygon API錯誤: {e}")
         
-        # 模擬期權數據
-        max_pain_price = stock_price * 0.98  # 通常在當前價格略下方
-        pain_coefficient = abs(stock_price - max_pain_price) / stock_price
-        
-        if pain_coefficient < 0.02:
-            strength = "🔴 極強磁吸"
-            risk_level = "高"
-        elif pain_coefficient < 0.05:
-            strength = "🟡 中等磁吸"
-            risk_level = "中"
-        else:
-            strength = "🟢 弱磁吸"
-            risk_level = "低"
-        
-        return {
-            'max_pain_price': max_pain_price,
-            'current_distance': abs(stock_price - max_pain_price),
-            'strength': strength,
-            'risk_level': risk_level,
-            'prediction': f"MM 目標價位: ${max_pain_price:.2f}"
-        }
-    
-    def analyze_gamma_exposure(self, stock_price: float) -> Dict:
-        """分析 Gamma Exposure 支撐阻力"""
-        # 模擬 Gamma Wall 計算
-        support_levels = [
-            stock_price * 0.95,
-            stock_price * 0.92,
-            stock_price * 0.88
-        ]
-        
-        resistance_levels = [
-            stock_price * 1.05,
-            stock_price * 1.08,
-            stock_price * 1.12
-        ]
-        
-        # 判斷最近的 Gamma Wall
-        nearest_support = max([s for s in support_levels if s < stock_price])
-        nearest_resistance = min([r for r in resistance_levels if r > stock_price])
-        
-        gamma_strength = "🔥 極強" if abs(stock_price - nearest_resistance) < 5 else "⚡ 中等"
-        
-        return {
-            'nearest_support': nearest_support,
-            'nearest_resistance': nearest_resistance,
-            'support_levels': support_levels,
-            'resistance_levels': resistance_levels,
-            'gamma_strength': gamma_strength,
-            'trading_range': f"${nearest_support:.2f} - ${nearest_resistance:.2f}"
-        }
-    
-    def predict_delta_flow(self, stock_data: Dict) -> Dict:
-        """預測 Delta Flow 和 MM 對沖方向"""
-        price_momentum = stock_data['change_percent']
-        volume_ratio = stock_data['volume'] / 50000000  # 假設平均成交量
-        
-        if price_momentum > 2 and volume_ratio > 1.2:
-            delta_direction = "🔴 強烈賣壓"
-            mm_action = "MM 被迫買入對沖"
-            confidence = "高"
-        elif price_momentum < -2 and volume_ratio > 1.2:
-            delta_direction = "🟢 強烈買壓"
-            mm_action = "MM 被迫賣出對沖"
-            confidence = "高"
-        else:
-            delta_direction = "🟡 中性流向"
-            mm_action = "MM 維持平衡"
-            confidence = "中"
-        
-        return {
-            'direction': delta_direction,
-            'mm_action': mm_action,
-            'confidence': confidence,
-            'volume_analysis': f"成交量比例: {volume_ratio:.1f}x"
-        }
-    
-    def assess_iv_crush_risk(self, stock_price: float) -> Dict:
-        """評估 IV Crush 風險"""
-        # 模擬隱含波動率分析
-        current_iv = 0.35  # 35% IV
-        historical_iv = 0.28  # 28% 歷史平均
-        
-        iv_percentile = ((current_iv - 0.20) / (0.50 - 0.20)) * 100
-        
-        if iv_percentile > 80:
-            risk_level = "🔴 極高風險"
-            recommendation = "避免買入選擇權"
-        elif iv_percentile > 60:
-            risk_level = "🟡 中等風險"
-            recommendation = "謹慎操作"
-        else:
-            risk_level = "🟢 低風險"
-            recommendation = "適合期權策略"
-        
-        return {
-            'current_iv': current_iv,
-            'iv_percentile': iv_percentile,
-            'risk_level': risk_level,
-            'recommendation': recommendation,
-            'crush_probability': f"{max(0, iv_percentile - 50):.0f}%"
-        }
-    
-    def generate_trading_strategy(self, stock_data: Dict, max_pain: Dict, gamma: Dict, delta: Dict, iv_risk: Dict) -> Dict:
-        """基於所有分析生成交易策略"""
-        current_price = stock_data['current_price']
-        
-        # 綜合分析
-        strategies = []
-        risk_assessment = "中等"
-        
-        # Max Pain 策略
-        if max_pain['risk_level'] == "高":
-            strategies.append(f"⚠️ 警告：接近 Max Pain ${max_pain['max_pain_price']:.2f}")
-        
-        # Gamma 策略
-        strategies.append(f"🎯 交易區間：{gamma['trading_range']}")
-        
-        # Delta 策略
-        strategies.append(f"📊 {delta['mm_action']}")
-        
-        # IV 策略
-        strategies.append(f"💨 {iv_risk['recommendation']}")
-        
-        # 主要建議
-        if stock_data['change_percent'] > 0:
-            main_strategy = "🔥 多頭趨勢，關注阻力突破"
-        else:
-            main_strategy = "🔵 空頭壓力，尋找支撐反彈"
-        
-        return {
-            'main_strategy': main_strategy,
-            'detailed_strategies': strategies,
-            'risk_assessment': risk_assessment,
-            'confidence_level': delta['confidence']
-        }
-    
-    def send_telegram_report(self, analysis_data: Dict) -> bool:
-        """發送完整分析報告到 Telegram"""
+        # 備用Finnhub
         try:
-            stock = analysis_data['stock_data']
-            max_pain = analysis_data['max_pain']
-            gamma = analysis_data['gamma']
-            delta = analysis_data['delta']
-            iv_risk = analysis_data['iv_risk']
-            strategy = analysis_data['strategy']
+            url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={self.finnhub_key}"
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=10) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return {
+                            'symbol': symbol,
+                            'current_price': float(data['c']),
+                            'previous_close': float(data['pc']),
+                            'change': float(data['d']),
+                            'change_percent': float(data['dp']),
+                            'volume': 0,
+                            'high': float(data['h']),
+                            'low': float(data['l']),
+                            'timestamp': datetime.now()
+                        }
+        except Exception as e:
+            print(f"Finnhub API錯誤: {e}")
+        
+        return None
+    
+    async def get_options_analysis(self) -> Dict:
+        """獲取期權分析數據"""
+        try:
+            expiry = self.get_next_friday()
+            url = f"https://api.polygon.io/v3/reference/options/contracts?underlying_ticker=TSLA&expiration_date={expiry}&limit=200&apikey={self.polygon_key}"
             
-            message = f"""
-🎯 **TSLA Market Maker 專業分析**
-📅 {stock['timestamp'].strftime('%Y-%m-%d %H:%M')}
-
-📊 **股價資訊**
-💰 當前價格: ${stock['current_price']:.2f}
-📈 變化: {stock['change']:+.2f} ({stock['change_percent']:+.2f}%)
-📦 成交量: {stock['volume']:,}
-
-🧲 **Max Pain 磁吸分析**
-{max_pain['strength']} 目標: ${max_pain['max_pain_price']:.2f}
-📏 距離: ${max_pain['current_distance']:.2f}
-⚠️ 風險等級: {max_pain['risk_level']}
-
-⚡ **Gamma 支撐阻力地圖**
-🛡️ 最近支撐: ${gamma['nearest_support']:.2f}
-🚧 最近阻力: ${gamma['nearest_resistance']:.2f}
-💪 Gamma 強度: {gamma['gamma_strength']}
-📊 交易區間: {gamma['trading_range']}
-
-🌊 **Delta Flow 對沖分析**
-📈 流向: {delta['direction']}
-🤖 MM 行為: {delta['mm_action']}
-🎯 信心度: {delta['confidence']}
-
-💨 **IV Crush 風險評估**
-📊 當前 IV: {iv_risk['current_iv']:.1%}
-📈 IV 百分位: {iv_risk['iv_percentile']:.0f}%
-⚠️ 風險等級: {iv_risk['risk_level']}
-💡 建議: {iv_risk['recommendation']}
-
-🔮 **專業交易策略**
-🎯 主策略: {strategy['main_strategy']}
-📋 詳細建議:
-""" + "\n".join([f"   • {s}" for s in strategy['detailed_strategies']]) + f"""
-
-⚖️ 風險評估: {strategy['risk_assessment']}
-🎯 信心等級: {strategy['confidence_level']}
-
-🔥 **Market Maker 行為預測**
-{max_pain['prediction']}
-預計操控強度: {max_pain['strength']}
-
----
-⚡ 由 TSLA MM 專業分析系統提供
-🤖 下次更新：明日同一時間
-            """
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=10) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        contracts = data.get('results', [])
+                        
+                        if contracts:
+                            calls = [c for c in contracts if c.get('contract_type') == 'call']
+                            puts = [c for c in contracts if c.get('contract_type') == 'put']
+                            
+                            return {
+                                'expiry': expiry,
+                                'total_contracts': len(contracts),
+                                'calls_count': len(calls),
+                                'puts_count': len(puts),
+                                'call_put_ratio': len(calls) / len(puts) if puts else 0,
+                                'contracts': contracts[:50]  # 限制數量避免API過載
+                            }
+        except Exception as e:
+            print(f"期權數據獲取錯誤: {e}")
+        
+        return {'expiry': self.get_next_friday(), 'total_contracts': 0}
+    
+    def calculate_max_pain_and_targets(self, contracts: List[Dict], current_price: float) -> Dict:
+        """計算Max Pain和目標價格"""
+        if not contracts:
+            return {
+                'max_pain': current_price,
+                'confidence': 'low',
+                'friday_target_range': (current_price * 0.95, current_price * 1.05)
+            }
+        
+        # 簡化的Max Pain計算
+        strikes = []
+        for contract in contracts:
+            strike = contract.get('strike_price', 0)
+            if strike > 0:
+                strikes.append(strike)
+        
+        if strikes:
+            strikes = sorted(set(strikes))
+            # Max Pain通常在最大開放利益的執行價附近
+            median_strike = strikes[len(strikes)//2]
             
+            # 基於當前價格調整
+            if abs(median_strike - current_price) / current_price > 0.1:
+                max_pain = current_price
+                confidence = 'low'
+            else:
+                max_pain = median_strike
+                confidence = 'medium'
+            
+            # 週五目標範圍
+            range_width = current_price * 0.08  # 8%範圍
+            friday_target_range = (max_pain - range_width/2, max_pain + range_width/2)
+            
+            return {
+                'max_pain': max_pain,
+                'confidence': confidence,
+                'friday_target_range': friday_target_range,
+                'total_strikes': len(strikes)
+            }
+        
+        return {
+            'max_pain': current_price,
+            'confidence': 'low',
+            'friday_target_range': (current_price * 0.95, current_price * 1.05)
+        }
+    
+    def analyze_intraday_momentum(self, price_data: Dict) -> Dict:
+        """分析日內動能"""
+        current_price = price_data['current_price']
+        change_percent = price_data['change_percent']
+        
+        # 動能強度分析
+        if abs(change_percent) < 1:
+            momentum = "弱"
+            volatility = "低"
+        elif abs(change_percent) < 3:
+            momentum = "中等"
+            volatility = "中等"
+        else:
+            momentum = "強"
+            volatility = "高"
+        
+        # 趨勢方向
+        if change_percent > 0.5:
+            trend = "看多"
+            bias = "bullish"
+        elif change_percent < -0.5:
+            trend = "看空"
+            bias = "bearish"
+        else:
+            trend = "震盪"
+            bias = "neutral"
+        
+        return {
+            'momentum': momentum,
+            'volatility': volatility,
+            'trend': trend,
+            'bias': bias,
+            'strength_score': min(10, abs(change_percent) * 2)
+        }
+    
+    def generate_options_strategies(self, price_data: Dict, options_data: Dict, 
+                                  max_pain_data: Dict, momentum: Dict) -> Dict:
+        """生成期權策略建議（風險分級）"""
+        current_price = price_data['current_price']
+        friday_target = max_pain_data['friday_target_range']
+        trend_bias = momentum['bias']
+        volatility = momentum['volatility']
+        
+        strategies = {
+            'conservative': [],
+            'moderate': [],
+            'aggressive': []
+        }
+        
+        # 保守策略（風險較低）
+        if trend_bias == 'bullish' and volatility != '高':
+            strategies['conservative'].append({
+                'name': 'Bull Put Spread',
+                'description': f'賣出${current_price * 0.95:.0f} Put + 買入${current_price * 0.90:.0f} Put',
+                'max_profit': '有限（收取權利金）',
+                'max_loss': '有限（價差-權利金）',
+                'breakeven': f'${current_price * 0.95:.0f}附近',
+                'success_condition': f'TSLA維持在${current_price * 0.95:.0f}以上',
+                'risk_level': '中低'
+            })
+        
+        if trend_bias == 'bearish' and volatility != '高':
+            strategies['conservative'].append({
+                'name': 'Bear Call Spread',
+                'description': f'賣出${current_price * 1.05:.0f} Call + 買入${current_price * 1.10:.0f} Call',
+                'max_profit': '有限（收取權利金）',
+                'max_loss': '有限（價差-權利金）',
+                'breakeven': f'${current_price * 1.05:.0f}附近',
+                'success_condition': f'TSLA保持在${current_price * 1.05:.0f}以下',
+                'risk_level': '中低'
+            })
+        
+        # 中等風險策略
+        if trend_bias == 'bullish':
+            target_strike = min(friday_target[1], current_price * 1.08)
+            strategies['moderate'].append({
+                'name': 'Long Call',
+                'description': f'買入${target_strike:.0f} Call',
+                'max_profit': '無限（理論上）',
+                'max_loss': '權利金100%',
+                'breakeven': f'${target_strike:.0f} + 權利金',
+                'success_condition': f'TSLA突破${target_strike:.0f}且幅度超過權利金',
+                'risk_level': '中等'
+            })
+        
+        if trend_bias == 'bearish':
+            target_strike = max(friday_target[0], current_price * 0.92)
+            strategies['moderate'].append({
+                'name': 'Long Put',
+                'description': f'買入${target_strike:.0f} Put',
+                'max_profit': '高（但有限）',
+                'max_loss': '權利金100%',
+                'breakeven': f'${target_strike:.0f} - 權利金',
+                'success_condition': f'TSLA跌破${target_strike:.0f}且幅度超過權利金',
+                'risk_level': '中等'
+            })
+        
+        # 高風險策略（追求最大利潤但風險極高）
+        if volatility == '高':
+            strategies['aggressive'].append({
+                'name': 'Short Straddle（極高風險）',
+                'description': f'同時賣出${current_price:.0f} Call和Put',
+                'max_profit': '雙邊權利金',
+                'max_loss': '理論無限',
+                'breakeven': f'${current_price:.0f} ± 權利金總和',
+                'success_condition': 'TSLA在到期時剛好在當前價格',
+                'risk_level': '極高',
+                'warning': '可能損失遠超本金，需要大量保證金'
+            })
+        
+        return strategies
+    
+    def generate_session_report(self, session: str, price_data: Dict, 
+                              options_data: Dict, strategies: Dict) -> str:
+        """生成特定時段報告"""
+        current_price = price_data['current_price']
+        change = price_data['change']
+        change_percent = price_data['change_percent']
+        change_emoji = "📈" if change > 0 else "📉" if change < 0 else "➡️"
+        change_sign = "+" if change > 0 else ""
+        
+        session_names = {
+            'pre_market': '盤前分析',
+            'market_open': '開盤後分析', 
+            'afternoon': '午盤分析',
+            'after_market': '盤後分析'
+        }
+        
+        session_icons = {
+            'pre_market': '🌅',
+            'market_open': '🔥',
+            'afternoon': '⚡',
+            'after_market': '🌙'
+        }
+        
+        report = f"""{session_icons[session]} TSLA {session_names[session]}
+📅 {datetime.now(self.taipei).strftime('%Y-%m-%d %H:%M')} 台北時間
+📅 {datetime.now(self.est).strftime('%H:%M')} EST
+
+📊 **當前狀況**
+💰 價格: ${current_price:.2f}
+{change_emoji} 變化: {change_sign}{abs(change):.2f} ({change_sign}{abs(change_percent):.2f}%)
+📦 成交量: {price_data.get('volume', 'N/A'):,}"""
+
+        # 時段特定分析
+        if session == 'pre_market':
+            report += f"""
+
+🌅 **盤前重點**
+• 隔夜消息影響評估
+• 亞洲市場情緒傳導
+• 開盤預期方向: {"看多" if change_percent > 0 else "看空" if change_percent < 0 else "震盪"}"""
+
+        elif session == 'market_open':
+            report += f"""
+
+🔥 **開盤分析**
+• 開盤15分鐘趨勢確認
+• 成交量能否支撐方向
+• 首小時目標: ${current_price * (1.02 if change_percent > 0 else 0.98):.2f}"""
+
+        elif session == 'afternoon':
+            report += f"""
+
+⚡ **午盤評估**
+• 中段動能持續性
+• 機構資金流向觀察
+• 收盤前可能動作"""
+
+        else:  # after_market
+            report += f"""
+
+🌙 **盤後總結**
+• 全日表現回顧
+• 隔夜持倉風險評估
+• 明日開盤預期"""
+
+        # Max Pain分析
+        max_pain_data = self.calculate_max_pain_and_targets(
+            options_data.get('contracts', []), current_price
+        )
+        
+        report += f"""
+
+🧲 **Max Pain磁吸分析**
+🎯 週五目標: ${max_pain_data['max_pain']:.2f}
+📏 目標範圍: ${max_pain_data['friday_target_range'][0]:.2f} - ${max_pain_data['friday_target_range'][1]:.2f}
+📊 信心度: {max_pain_data['confidence']}
+🗓️ 到期日: {options_data['expiry']}"""
+
+        # 期權策略建議
+        if strategies['conservative']:
+            report += f"""
+
+💡 **保守策略建議**"""
+            for strategy in strategies['conservative']:
+                report += f"""
+• **{strategy['name']}** (風險: {strategy['risk_level']})
+  {strategy['description']}
+  成功條件: {strategy['success_condition']}"""
+
+        if strategies['moderate']:
+            report += f"""
+
+⚡ **中等風險策略**"""
+            for strategy in strategies['moderate']:
+                report += f"""
+• **{strategy['name']}** (風險: {strategy['risk_level']})
+  {strategy['description']}
+  成功條件: {strategy['success_condition']}"""
+
+        if strategies['aggressive']:
+            report += f"""
+
+🔴 **高風險策略** (謹慎考慮)"""
+            for strategy in strategies['aggressive']:
+                report += f"""
+• **{strategy['name']}** (風險: {strategy['risk_level']})
+  {strategy['description']}
+  ⚠️ {strategy.get('warning', '極高風險，可能全部損失')}"""
+
+        report += f"""
+
+⚠️ **重要提醒**
+• 期權交易涉及高風險，可能損失全部本金
+• 建議僅使用可承受完全損失的資金
+• 時間價值衰減會快速侵蝕期權價值
+• 隱含波動率變化可能導致意外損失
+
+🤖 Maggie TSLA專業分析系統
+📊 下次更新: 6小時後 (除非市場重大變化)"""
+
+        return report
+    
+    async def send_telegram_report(self, message: str) -> bool:
+        """發送報告到Telegram"""
+        try:
             telegram_url = f"https://api.telegram.org/bot{self.telegram_token}/sendMessage"
             telegram_data = {
                 "chat_id": self.telegram_chat_id,
-                "text": message.strip(),
+                "text": message,
                 "parse_mode": "Markdown"
             }
             
-            response = requests.post(telegram_url, json=telegram_data, timeout=10)
-            return response.status_code == 200
-            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(telegram_url, json=telegram_data, timeout=10) as response:
+                    return response.status == 200
+                    
         except Exception as e:
-            print(f"❌ Telegram 發送錯誤: {e}")
+            print(f"Telegram發送錯誤: {e}")
             return False
     
-    def update_notion_database(self, analysis_data: Dict) -> bool:
-        """更新 Notion 資料庫記錄"""
-        if not self.notion_token or not self.notion_database_id:
-            print("📝 Notion 配置未設置，跳過資料庫更新")
-            return True
+    async def run_analysis(self):
+        """執行TSLA分析"""
+        session = self.get_current_session()
+        
+        print(f"🚀 開始TSLA {session} 分析...")
         
         try:
-            stock = analysis_data['stock_data']
-            max_pain = analysis_data['max_pain']
-            gamma = analysis_data['gamma']
-            strategy = analysis_data['strategy']
+            # 1. 獲取TSLA數據
+            print("📊 獲取TSLA實時數據...")
+            price_data = await self.get_tsla_realtime_data()
+            if not price_data:
+                print("❌ 無法獲取TSLA數據")
+                return False
             
-            notion_url = f"https://api.notion.com/v1/pages"
-            headers = {
-                "Authorization": f"Bearer {self.notion_token}",
-                "Content-Type": "application/json",
-                "Notion-Version": "2022-06-28"
-            }
+            # 2. 獲取期權數據
+            print("🔍 分析期權市場...")
+            options_data = await self.get_options_analysis()
             
-            notion_data = {
-                "parent": {"database_id": self.notion_database_id},
-                "properties": {
-                    "日期": {
-                        "date": {"start": stock['timestamp'].strftime('%Y-%m-%d')}
-                    },
-                    "股價": {
-                        "number": stock['current_price']
-                    },
-                    "變化百分比": {
-                        "number": stock['change_percent']
-                    },
-                    "Max Pain": {
-                        "number": max_pain['max_pain_price']
-                    },
-                    "支撐位": {
-                        "number": gamma['nearest_support']
-                    },
-                    "阻力位": {
-                        "number": gamma['nearest_resistance']
-                    },
-                    "策略": {
-                        "rich_text": [{"text": {"content": strategy['main_strategy']}}]
-                    },
-                    "風險等級": {
-                        "select": {"name": strategy['risk_assessment']}
-                    }
-                }
-            }
+            # 3. 分析動能
+            momentum = self.analyze_intraday_momentum(price_data)
             
-            response = requests.post(notion_url, headers=headers, json=notion_data, timeout=10)
-            return response.status_code == 200
-            
-        except Exception as e:
-            print(f"❌ Notion 更新錯誤: {e}")
-            return False
-    
-    def run_full_analysis(self):
-        """執行完整的 Market Maker 分析"""
-        print("🚀 開始 TSLA Market Maker 專業分析...")
-        
-        try:
-            # 1. 獲取股價數據
-            print("📊 獲取股價數據...")
-            stock_data = self.get_stock_data()
-            
-            # 2. Max Pain 分析
-            print("🧲 計算 Max Pain Theory...")
-            max_pain_analysis = self.calculate_max_pain(stock_data['current_price'])
-            
-            # 3. Gamma Exposure 分析
-            print("⚡ 分析 Gamma Exposure...")
-            gamma_analysis = self.analyze_gamma_exposure(stock_data['current_price'])
-            
-            # 4. Delta Flow 預測
-            print("🌊 預測 Delta Flow...")
-            delta_analysis = self.predict_delta_flow(stock_data)
-            
-            # 5. IV Crush 風險評估
-            print("💨 評估 IV Crush 風險...")
-            iv_risk_analysis = self.assess_iv_crush_risk(stock_data['current_price'])
-            
-            # 6. 生成交易策略
-            print("🔮 生成專業交易策略...")
-            trading_strategy = self.generate_trading_strategy(
-                stock_data, max_pain_analysis, gamma_analysis, 
-                delta_analysis, iv_risk_analysis
+            # 4. 生成策略
+            print("💡 生成期權策略...")
+            strategies = self.generate_options_strategies(
+                price_data, options_data, 
+                self.calculate_max_pain_and_targets(options_data.get('contracts', []), price_data['current_price']),
+                momentum
             )
             
-            # 整合所有分析結果
-            analysis_data = {
-                'stock_data': stock_data,
-                'max_pain': max_pain_analysis,
-                'gamma': gamma_analysis,
-                'delta': delta_analysis,
-                'iv_risk': iv_risk_analysis,
-                'strategy': trading_strategy
-            }
+            # 5. 生成報告
+            print("📝 生成專業報告...")
+            report = self.generate_session_report(session, price_data, options_data, strategies)
             
-            # 7. 發送 Telegram 報告
-            print("📱 發送專業分析報告...")
-            telegram_success = self.send_telegram_report(analysis_data)
+            # 6. 發送報告
+            print("📱 發送Telegram報告...")
+            success = await self.send_telegram_report(report)
             
-            # 8. 更新 Notion 資料庫
-            print("📝 更新 Notion 資料庫...")
-            notion_success = self.update_notion_database(analysis_data)
-            
-            # 報告結果
-            if telegram_success:
-                print("✅ Telegram 專業報告發送成功！")
+            if success:
+                print(f"✅ TSLA {session} 報告發送成功！")
             else:
-                print("❌ Telegram 發送失敗")
+                print(f"❌ TSLA {session} 報告發送失敗")
             
-            if notion_success:
-                print("✅ Notion 資料庫更新成功！")
-            else:
-                print("⚠️ Notion 更新跳過或失敗")
-            
-            print("🎉 TSLA Market Maker 專業分析完成！")
-            return True
+            return success
             
         except Exception as e:
-            print(f"❌ 分析過程發生錯誤: {e}")
+            print(f"❌ TSLA分析過程錯誤: {e}")
             return False
 
-def main():
+async def main():
+    """主程序"""
     try:
-        analyzer = TSLAMarketMakerAnalyzer()
-        analyzer.run_full_analysis()
+        analyzer = TSLAQuadDailyAnalyzer()
+        await analyzer.run_analysis()
+        print("🎉 TSLA分析完成！")
+        
     except Exception as e:
         print(f"❌ 系統初始化失敗: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
