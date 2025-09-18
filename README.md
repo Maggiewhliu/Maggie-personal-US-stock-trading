@@ -1,1 +1,1 @@
-# Maggie's-personal-US-stock-trading
+# Maggie-personal-US-stock-trading
