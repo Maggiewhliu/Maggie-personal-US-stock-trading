@@ -1,1 +1,1 @@
-# tsla-auto-monitor
+# Maggie's-personal-US-stock-trading
