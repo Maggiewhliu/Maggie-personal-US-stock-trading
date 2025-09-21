@@ -4,16 +4,20 @@ Maggie Stock AI Bot - 完全清理版
 """
 
 import logging
+import os
 from datetime import datetime
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from threading import Thread
+from flask import Flask
 
 # 設定 logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Bot Token
+# Bot Token 和 Port
 BOT_TOKEN = '8320641094:AAG1JVdI6BaPLgoUIAYmI3QgymnDG6x3hZE'
+PORT = int(os.getenv('PORT', 8080))
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """處理 /start 命令"""
@@ -112,9 +116,36 @@ def main():
     application.add_handler(CommandHandler("stock", stock_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     
-    # 使用輪詢模式啟動
-    logger.info("✅ 機器人啟動中...")
-    application.run_polling()
+    # 如果在 Render 環境，啟動 Flask 服務器
+    if os.getenv('RENDER'):
+        logger.info("Render 環境：啟動 Flask + 輪詢模式")
+        
+        # 創建 Flask app
+        app = Flask(__name__)
+        
+        @app.route('/')
+        def home():
+            return "🚀 Maggie Stock AI Bot is running!"
+        
+        @app.route('/health')
+        def health():
+            return {"status": "healthy", "bot": "running"}
+        
+        # 在背景執行機器人
+        def run_bot():
+            application.run_polling()
+        
+        bot_thread = Thread(target=run_bot)
+        bot_thread.daemon = True
+        bot_thread.start()
+        
+        # 啟動 Flask 服務器
+        logger.info(f"Flask 服務器啟動於 Port {PORT}")
+        app.run(host='0.0.0.0', port=PORT)
+    else:
+        # 本地環境：只用輪詢模式
+        logger.info("本地環境：使用輪詢模式")
+        application.run_polling()
 
 if __name__ == '__main__':
     main()
