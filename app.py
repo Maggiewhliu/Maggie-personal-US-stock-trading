@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Maggie Stock AI Bot - 完全清理版
+Maggie Stock AI Bot - Webhook 模式
 """
 
 import logging
@@ -8,16 +8,22 @@ import os
 from datetime import datetime
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from threading import Thread
-from flask import Flask
+from flask import Flask, request
 
 # 設定 logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Bot Token 和 Port
+# Bot Token 和設定
 BOT_TOKEN = '8320641094:AAG1JVdI6BaPLgoUIAYmI3QgymnDG6x3hZE'
 PORT = int(os.getenv('PORT', 8080))
+WEBHOOK_URL = f"https://maggie-personal-us-stock-trading.onrender.com/{BOT_TOKEN}"
+
+# 創建 Flask 應用
+app = Flask(__name__)
+
+# 創建 Telegram 應用
+application = Application.builder().token(BOT_TOKEN).build()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """處理 /start 命令"""
@@ -104,60 +110,58 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("👋 使用 /stock TSLA 開始分析")
 
-def main():
-    """主函數"""
-    logger.info("啟動 Maggie Stock AI Bot...")
-    
-    # 創建應用程式
-    application = Application.builder().token(BOT_TOKEN).build()
-    
-    # 註冊處理器
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("stock", stock_command))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-    
-    # 如果在 Render 環境，啟動 Flask 服務器
-    if os.getenv('RENDER'):
-        logger.info("Render 環境：啟動 Flask + 輪詢模式")
-        
-        # 創建 Flask app
-        app = Flask(__name__)
-        
-        @app.route('/')
-        def home():
-            return "🚀 Maggie Stock AI Bot is running!"
-        
-        @app.route('/health')
-        def health():
-            return {"status": "healthy", "bot": "running"}
-        
-        # 先啟動機器人輪詢
-        import threading
-        
-        def run_bot():
-            logger.info("機器人線程啟動中...")
-            try:
-                application.run_polling(drop_pending_updates=True)
-            except Exception as e:
-                logger.error(f"機器人線程錯誤: {e}")
-        
-        # 啟動機器人線程
-        bot_thread = threading.Thread(target=run_bot)
-        bot_thread.daemon = True
-        bot_thread.start()
-        logger.info("機器人線程已啟動")
-        
-        # 等待一下確保機器人啟動
-        import time
-        time.sleep(2)
-        
-        # 啟動 Flask 服務器
-        logger.info(f"Flask 服務器啟動於 Port {PORT}")
-        app.run(host='0.0.0.0', port=PORT, debug=False)
-    else:
-        # 本地環境：只用輪詢模式
-        logger.info("本地環境：使用輪詢模式")
-        application.run_polling()
+# 註冊處理器
+application.add_handler(CommandHandler("start", start))
+application.add_handler(CommandHandler("stock", stock_command))
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+
+@app.route('/')
+def home():
+    return "🚀 Maggie Stock AI Bot is running!"
+
+@app.route('/health')
+def health():
+    return {"status": "healthy", "bot": "running"}
+
+@app.route(f'/{BOT_TOKEN}', methods=['POST'])
+async def webhook():
+    """處理 Telegram webhook"""
+    try:
+        logger.info("收到 webhook 請求")
+        update = Update.de_json(request.get_json(force=True), application.bot)
+        async with application:
+            await application.process_update(update)
+        return 'OK'
+    except Exception as e:
+        logger.error(f"Webhook 處理錯誤: {e}")
+        return 'ERROR', 500
+
+@app.route('/set_webhook')
+def set_webhook():
+    """設定 webhook"""
+    try:
+        import requests
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
+        data = {"url": WEBHOOK_URL}
+        response = requests.post(url, data=data)
+        return f"Webhook 設定結果: {response.text}"
+    except Exception as e:
+        return f"設定錯誤: {str(e)}"
 
 if __name__ == '__main__':
-    main()
+    logger.info("啟動 Webhook 模式...")
+    logger.info(f"Webhook URL: {WEBHOOK_URL}")
+    
+    # 自動設定 webhook
+    try:
+        import requests
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
+        data = {"url": WEBHOOK_URL}
+        response = requests.post(url, data=data)
+        logger.info(f"Webhook 設定: {response.json()}")
+    except Exception as e:
+        logger.error(f"Webhook 設定失敗: {e}")
+    
+    # 啟動 Flask 服務器
+    logger.info(f"Flask 服務器啟動於 Port {PORT}")
+    app.run(host='0.0.0.0', port=PORT, debug=False)
