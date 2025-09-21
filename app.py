@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-Maggie Stock AI Bot - Webhook 模式
+Maggie Stock AI Bot - 修復版 Webhook
 """
 
 import logging
 import os
+import asyncio
 from datetime import datetime
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from flask import Flask, request
+from flask import Flask, request, jsonify
 
 # 設定 logging
 logging.basicConfig(level=logging.INFO)
@@ -22,8 +23,8 @@ WEBHOOK_URL = f"https://maggie-personal-us-stock-trading.onrender.com/{BOT_TOKEN
 # 創建 Flask 應用
 app = Flask(__name__)
 
-# 創建 Telegram 應用
-application = Application.builder().token(BOT_TOKEN).build()
+# 全局變數
+telegram_app = None
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """處理 /start 命令"""
@@ -110,10 +111,16 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("👋 使用 /stock TSLA 開始分析")
 
-# 註冊處理器
-application.add_handler(CommandHandler("start", start))
-application.add_handler(CommandHandler("stock", stock_command))
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+def create_application():
+    """創建 Telegram 應用"""
+    application = Application.builder().token(BOT_TOKEN).build()
+    
+    # 註冊處理器
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("stock", stock_command))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    
+    return application
 
 @app.route('/')
 def home():
@@ -121,17 +128,35 @@ def home():
 
 @app.route('/health')
 def health():
-    return {"status": "healthy", "bot": "running"}
+    return jsonify({"status": "healthy", "bot": "running"})
 
 @app.route(f'/{BOT_TOKEN}', methods=['POST'])
-async def webhook():
+def webhook():
     """處理 Telegram webhook"""
     try:
         logger.info("收到 webhook 請求")
-        update = Update.de_json(request.get_json(force=True), application.bot)
-        async with application:
-            await application.process_update(update)
+        
+        # 獲取更新數據
+        update_data = request.get_json(force=True)
+        logger.info(f"更新數據: {update_data}")
+        
+        # 創建 Update 對象
+        update = Update.de_json(update_data, telegram_app.bot)
+        
+        # 在新的事件循環中處理更新
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        async def process_update():
+            async with telegram_app:
+                await telegram_app.process_update(update)
+        
+        loop.run_until_complete(process_update())
+        loop.close()
+        
+        logger.info("成功處理 webhook 請求")
         return 'OK'
+        
     except Exception as e:
         logger.error(f"Webhook 處理錯誤: {e}")
         return 'ERROR', 500
@@ -143,25 +168,52 @@ def set_webhook():
         import requests
         url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
         data = {"url": WEBHOOK_URL}
-        response = requests.post(url, data=data)
-        return f"Webhook 設定結果: {response.text}"
+        response = requests.post(url, json=data)
+        result = response.json()
+        logger.info(f"Webhook 設定結果: {result}")
+        return jsonify(result)
     except Exception as e:
-        return f"設定錯誤: {str(e)}"
+        logger.error(f"設定 webhook 錯誤: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/webhook_info')
+def webhook_info():
+    """檢查 webhook 狀態"""
+    try:
+        import requests
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/getWebhookInfo"
+        response = requests.get(url)
+        result = response.json()
+        logger.info(f"Webhook 狀態: {result}")
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"檢查 webhook 錯誤: {e}")
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     logger.info("啟動 Webhook 模式...")
-    logger.info(f"Webhook URL: {WEBHOOK_URL}")
+    
+    # 創建 Telegram 應用
+    telegram_app = create_application()
+    logger.info("Telegram 應用已創建")
     
     # 自動設定 webhook
     try:
         import requests
         url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
         data = {"url": WEBHOOK_URL}
-        response = requests.post(url, data=data)
-        logger.info(f"Webhook 設定: {response.json()}")
+        response = requests.post(url, json=data)
+        result = response.json()
+        logger.info(f"Webhook 設定結果: {result}")
+        
+        if result.get('ok'):
+            logger.info("✅ Webhook 設定成功")
+        else:
+            logger.error(f"❌ Webhook 設定失敗: {result}")
     except Exception as e:
-        logger.error(f"Webhook 設定失敗: {e}")
+        logger.error(f"Webhook 設定錯誤: {e}")
     
     # 啟動 Flask 服務器
     logger.info(f"Flask 服務器啟動於 Port {PORT}")
+    logger.info(f"Webhook URL: {WEBHOOK_URL}")
     app.run(host='0.0.0.0', port=PORT, debug=False)
