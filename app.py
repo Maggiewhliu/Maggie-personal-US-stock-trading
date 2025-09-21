@@ -1,44 +1,70 @@
 #!/usr/bin/env python3
 """
-Maggie Stock AI Bot - 最終極簡版本
+TSLA Monitor Bot - 輪詢模式
 """
 
 import logging
 import os
-import json
+import time
+import threading
 from datetime import datetime
-from flask import Flask, request
-
-# 設定 logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from flask import Flask
 
 # Bot Token
 BOT_TOKEN = '7976625561:AAG6VcZ0dE5Bg99wMACBezkmgWvnwmNAmgI'
 PORT = int(os.getenv('PORT', 8080))
 
-# 創建 Flask 應用
+# 設定 logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Flask 應用（只為了滿足 Render 要求）
 app = Flask(__name__)
 
-def send_message(chat_id, text):
-    """發送訊息到 Telegram"""
-    try:
-        import requests
-        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-        data = {
-            "chat_id": chat_id,
-            "text": text
-        }
-        response = requests.post(url, json=data)
-        logger.info(f"發送訊息結果: {response.status_code}")
-        return response.json()
-    except Exception as e:
-        logger.error(f"發送訊息錯誤: {e}")
-        return None
+@app.route('/')
+def home():
+    return "TSLA Monitor Bot is running in polling mode!"
 
-def get_tsla_report():
-    """獲取 TSLA 報告"""
-    return f"""🎯 TSLA Market Maker 專業分析
+@app.route('/health')
+def health():
+    return {"status": "healthy", "mode": "polling"}
+
+class SimpleTelegramBot:
+    def __init__(self, token):
+        self.token = token
+        self.last_update_id = 0
+        self.running = True
+        
+    def send_message(self, chat_id, text):
+        """發送訊息"""
+        try:
+            import requests
+            url = f"https://api.telegram.org/bot{self.token}/sendMessage"
+            data = {"chat_id": chat_id, "text": text}
+            response = requests.post(url, json=data)
+            logger.info(f"發送訊息結果: {response.status_code}")
+            return response.json()
+        except Exception as e:
+            logger.error(f"發送訊息錯誤: {e}")
+    
+    def get_updates(self):
+        """獲取更新"""
+        try:
+            import requests
+            url = f"https://api.telegram.org/bot{self.token}/getUpdates"
+            params = {
+                "offset": self.last_update_id + 1,
+                "timeout": 10
+            }
+            response = requests.get(url, params=params)
+            return response.json()
+        except Exception as e:
+            logger.error(f"獲取更新錯誤: {e}")
+            return None
+    
+    def get_tsla_report(self):
+        """TSLA 分析報告"""
+        return f"""🎯 TSLA Market Maker 專業分析
 🌙 盤後分析
 📅 {datetime.now().strftime('%Y-%m-%d %H:%M')}
 
@@ -89,95 +115,80 @@ MM 目標價位: $245.00
 
 ---
 🔥 Market Maker 專業版 by Maggie"""
-
-@app.route('/')
-def home():
-    return "🚀 Maggie Stock AI Bot is running!"
-
-@app.route('/health')
-def health():
-    return {"status": "healthy", "bot": "running"}
-
-@app.route(f'/{BOT_TOKEN}', methods=['POST'])
-def webhook():
-    """處理 Telegram webhook"""
-    try:
-        logger.info("收到 webhook 請求")
-        
-        # 獲取更新數據
-        update = request.get_json()
-        logger.info(f"收到更新: {json.dumps(update, indent=2)}")
-        
-        # 檢查是否有訊息
-        if 'message' not in update:
-            return 'OK'
-        
-        message = update['message']
+    
+    def handle_message(self, message):
+        """處理訊息"""
         chat_id = message['chat']['id']
+        text = message.get('text', '').strip()
         
-        # 檢查是否有文字
-        if 'text' not in message:
-            return 'OK'
+        logger.info(f"收到訊息: {text} from {chat_id}")
         
-        text = message['text'].strip()
-        logger.info(f"收到文字: {text}")
-        
-        # 處理命令
         if text == '/start':
-            response_text = "🚀 Maggie Stock AI - Market Maker 專業版\n\n使用 /stock TSLA 開始測試"
-            send_message(chat_id, response_text)
+            response = "🚀 TSLA Monitor - Market Maker 專業版\n\n使用 /stock TSLA 開始分析"
+            self.send_message(chat_id, response)
             
         elif text.startswith('/stock'):
             parts = text.split()
             if len(parts) > 1 and parts[1].upper() == 'TSLA':
-                response_text = get_tsla_report()
-                send_message(chat_id, response_text)
+                report = self.get_tsla_report()
+                self.send_message(chat_id, report)
                 logger.info("發送 TSLA 分析報告")
             else:
-                send_message(chat_id, "請使用: /stock TSLA")
+                self.send_message(chat_id, "請使用: /stock TSLA")
                 
         elif 'tsla' in text.lower():
-            send_message(chat_id, "🎯 偵測到 TSLA\n使用 /stock TSLA 獲取分析")
+            self.send_message(chat_id, "🎯 偵測到 TSLA\n使用 /stock TSLA 獲取完整分析")
             
         else:
-            send_message(chat_id, "👋 使用 /stock TSLA 開始分析")
+            self.send_message(chat_id, "👋 我是 TSLA Monitor\n使用 /stock TSLA 開始分析")
+    
+    def run(self):
+        """運行機器人"""
+        logger.info("開始輪詢模式...")
         
-        return 'OK'
-        
-    except Exception as e:
-        logger.error(f"Webhook 錯誤: {e}")
-        return 'ERROR', 500
+        while self.running:
+            try:
+                updates = self.get_updates()
+                
+                if updates and updates.get('ok'):
+                    for update in updates.get('result', []):
+                        self.last_update_id = update['update_id']
+                        
+                        if 'message' in update:
+                            self.handle_message(update['message'])
+                
+                time.sleep(1)  # 避免過度頻繁請求
+                
+            except Exception as e:
+                logger.error(f"輪詢錯誤: {e}")
+                time.sleep(5)
 
-@app.route('/set_webhook')
-def set_webhook():
-    """設定 webhook"""
-    try:
-        import requests
-        webhook_url = f"https://maggie-personal-us-stock-trading.onrender.com/{BOT_TOKEN}"
-        url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
-        data = {"url": webhook_url}
-        response = requests.post(url, json=data)
-        result = response.json()
-        logger.info(f"Webhook 設定: {result}")
-        return f"Webhook 設定結果: {result}"
-    except Exception as e:
-        return f"錯誤: {str(e)}"
+# 創建機器人實例
+bot = SimpleTelegramBot(BOT_TOKEN)
+
+def run_bot():
+    """在背景運行機器人"""
+    bot.run()
 
 if __name__ == '__main__':
-    logger.info("啟動極簡版機器人...")
+    logger.info("啟動 TSLA Monitor Bot...")
     
-    # 自動設定 webhook
+    # 清除 webhook（改用輪詢）
     try:
         import requests
-        webhook_url = f"https://maggie-personal-us-stock-trading.onrender.com/{BOT_TOKEN}"
-        url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
-        data = {"url": webhook_url}
-        response = requests.post(url, json=data)
-        result = response.json()
-        logger.info(f"自動設定 Webhook: {result}")
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/deleteWebhook"
+        response = requests.post(url)
+        logger.info(f"清除 webhook: {response.json()}")
     except Exception as e:
-        logger.error(f"自動設定失敗: {e}")
+        logger.error(f"清除 webhook 失敗: {e}")
     
-    # 啟動服務器
-    logger.info(f"服務器啟動於 Port {PORT}")
+    # 在背景線程運行機器人
+    bot_thread = threading.Thread(target=run_bot)
+    bot_thread.daemon = True
+    bot_thread.start()
+    
+    logger.info("機器人線程已啟動")
+    
+    # 啟動 Flask 服務器
+    logger.info(f"Flask 服務器啟動於 Port {PORT}")
     app.run(host='0.0.0.0', port=PORT, debug=False)
