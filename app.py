@@ -131,17 +131,29 @@ def main():
         def health():
             return {"status": "healthy", "bot": "running"}
         
-        # 在背景執行機器人
-        def run_bot():
-            application.run_polling()
+        # 先啟動機器人輪詢
+        import threading
         
-        bot_thread = Thread(target=run_bot)
+        def run_bot():
+            logger.info("機器人線程啟動中...")
+            try:
+                application.run_polling(drop_pending_updates=True)
+            except Exception as e:
+                logger.error(f"機器人線程錯誤: {e}")
+        
+        # 啟動機器人線程
+        bot_thread = threading.Thread(target=run_bot)
         bot_thread.daemon = True
         bot_thread.start()
+        logger.info("機器人線程已啟動")
+        
+        # 等待一下確保機器人啟動
+        import time
+        time.sleep(2)
         
         # 啟動 Flask 服務器
         logger.info(f"Flask 服務器啟動於 Port {PORT}")
-        app.run(host='0.0.0.0', port=PORT)
+        app.run(host='0.0.0.0', port=PORT, debug=False)
     else:
         # 本地環境：只用輪詢模式
         logger.info("本地環境：使用輪詢模式")
