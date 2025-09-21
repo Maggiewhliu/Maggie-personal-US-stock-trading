@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Maggie Stock AI Bot - 超簡化測試版
+Maggie Stock AI Bot - Python 3.13 相容版
 """
 
 import logging
@@ -11,11 +11,11 @@ from datetime import datetime
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# 嘗試導入 telegram 模組
+# 導入新版本 telegram 模組
 try:
     from telegram import Update
-    from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackContext
-    logger.info("成功導入 telegram 模組")
+    from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+    logger.info("成功導入新版 telegram 模組")
 except ImportError as e:
     logger.error(f"導入錯誤: {e}")
     raise
@@ -23,17 +23,17 @@ except ImportError as e:
 # Bot Token
 BOT_TOKEN = '8320641094:AAG1JVdI6BaPLgoUIAYmI3QgymnDG6x3hZE'
 
-def start(update: Update, context: CallbackContext):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """測試 /start 命令"""
     logger.info("收到 /start 命令")
-    update.message.reply_text("🚀 Maggie Stock AI 測試版啟動成功！\n\n使用 /stock TSLA 測試功能")
+    await update.message.reply_text("🚀 Maggie Stock AI 測試版啟動成功！\n\n使用 /stock TSLA 測試功能")
 
-def stock_command(update: Update, context: CallbackContext):
+async def stock_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """測試股票查詢"""
     logger.info(f"收到股票查詢: {context.args}")
     
     if not context.args:
-        update.message.reply_text("請提供股票代碼，例如：/stock TSLA")
+        await update.message.reply_text("請提供股票代碼，例如：/stock TSLA")
         return
     
     symbol = context.args[0].upper()
@@ -41,7 +41,7 @@ def stock_command(update: Update, context: CallbackContext):
     
     # 簡單的分析回應
     if symbol == 'TSLA':
-        update.message.reply_text(f"""🎯 {symbol} 簡化分析測試
+        await update.message.reply_text(f"""🎯 {symbol} 簡化分析測試
 
 📊 股價資訊
 💰 當前價格: $246.97
@@ -61,44 +61,29 @@ def stock_command(update: Update, context: CallbackContext):
 ---
 📱 如果看到這個訊息，代表機器人已正常運作""")
     else:
-        update.message.reply_text(f"✅ 收到 {symbol} 查詢請求\n📊 測試版僅支援 TSLA\n🔧 完整版本開發中...")
+        await update.message.reply_text(f"✅ 收到 {symbol} 查詢請求\n📊 測試版僅支援 TSLA\n🔧 完整版本開發中...")
 
-def handle_text(update: Update, context: CallbackContext):
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """處理一般文字"""
     logger.info(f"收到文字: {update.message.text}")
-    update.message.reply_text("👋 測試版機器人運行中\n使用 /stock TSLA 測試功能")
+    await update.message.reply_text("👋 測試版機器人運行中\n使用 /stock TSLA 測試功能")
 
 def main():
     """主函數"""
     logger.info("啟動測試版機器人...")
     
     try:
-        # 創建 Updater
-        updater = Updater(BOT_TOKEN, use_context=True)
-        dispatcher = updater.dispatcher
+        # 創建新版 Application
+        application = Application.builder().token(BOT_TOKEN).build()
         
-        # 註冊基本處理器
-        dispatcher.add_handler(CommandHandler("start", start))
-        dispatcher.add_handler(CommandHandler("stock", stock_command))
+        # 註冊處理器
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CommandHandler("stock", stock_command))
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
         
-        # 嘗試添加文字處理器
-        try:
-            from telegram.ext import Filters
-            dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_text))
-            logger.info("使用 Filters")
-        except ImportError:
-            try:
-                from telegram.ext import filters
-                dispatcher.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-                logger.info("使用 filters")
-            except ImportError:
-                logger.warning("無法導入文字過濾器，跳過文字處理器")
-        
-        # 啟動機器人
-        logger.info("機器人啟動中...")
-        updater.start_polling()
-        logger.info("✅ 機器人已啟動，等待訊息...")
-        updater.idle()
+        # 啟動機器人 - 使用輪詢模式
+        logger.info("✅ 機器人啟動中，使用輪詢模式...")
+        application.run_polling(drop_pending_updates=True)
         
     except Exception as e:
         logger.error(f"啟動錯誤: {e}")
