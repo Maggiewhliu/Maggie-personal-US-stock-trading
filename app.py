@@ -18,7 +18,7 @@ FINNHUB_API_KEY = 'd33ke01r01qib1p1dvu0d33ke01r01qib1p1dvug'
 PORT = int(os.getenv('PORT', 8080))
 
 # 🔥 重要：請將這裡改成您的實際 Render URL
-RENDER_APP_URL = 'https://your-app-name.onrender.com'  # ← 請修改這裡！
+RENDER_APP_URL = 'https://maggie-personal-us-stock-trading.onrender.com'
 
 # ===== 日誌設置 =====
 logging.basicConfig(
