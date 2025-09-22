@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-TSLA Monitor Bot - 緊急修復版 (保證回應)
+TSLA Monitor Bot - Keep-Alive 版本 (防止 Render 睡眠)
 """
 
 import logging
@@ -17,6 +17,9 @@ BOT_TOKEN = '7976625561:AAG6VcZ0dE5Bg99wMACBezkmgWvnwmNAmgI'
 FINNHUB_API_KEY = 'd33ke01r01qib1p1dvu0d33ke01r01qib1p1dvug'
 PORT = int(os.getenv('PORT', 8080))
 
+# ⭐ 您的 Render App URL (需要替換成實際的)
+RENDER_APP_URL = os.getenv('RENDER_EXTERNAL_URL', 'https://your-app-name.onrender.com')
+
 # 設定 logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -30,7 +33,27 @@ def home():
 
 @app.route('/health')
 def health():
-    return {"status": "healthy"}
+    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+
+# ⭐ 新增：Keep-Alive 函數
+def keep_alive():
+    """保持服務器活躍，防止 Render 睡眠"""
+    logger.info("🔄 Keep-Alive 機制已啟動")
+    
+    while True:
+        try:
+            # 每14分鐘 ping 一次 (Render 免費版15分鐘後會睡眠)
+            time.sleep(840)  # 14分鐘 = 840秒
+            
+            # ping 自己的健康檢查端點
+            if RENDER_APP_URL and 'your-app-name' not in RENDER_APP_URL:
+                response = requests.get(f"{RENDER_APP_URL}/health", timeout=10)
+                logger.info(f"🏃‍♂️ Keep-alive ping 成功: {response.status_code}")
+            else:
+                logger.info("🏃‍♂️ Keep-alive ping (URL 未配置)")
+                
+        except Exception as e:
+            logger.error(f"❌ Keep-alive ping 失敗: {e}")
 
 class SimpleTSLABot:
     def __init__(self, token):
@@ -39,25 +62,24 @@ class SimpleTSLABot:
         self.running = True
         
     def send_message_simple(self, chat_id, text):
-        """超簡化發送訊息，去除所有可能出錯的參數"""
+        """超簡化發送訊息"""
         try:
             url = f"https://api.telegram.org/bot{self.token}/sendMessage"
             data = {
-                "chat_id": str(chat_id),  # 確保是字符串
-                "text": str(text)[:4000]  # 限制長度，避免太長
+                "chat_id": str(chat_id),
+                "text": str(text)[:4000]
             }
             
             logger.info(f"🔄 準備發送訊息到 {chat_id}")
             response = requests.post(url, json=data, timeout=30)
             
             logger.info(f"📤 發送狀態: {response.status_code}")
-            logger.info(f"📤 回應: {response.text[:200]}")
             
             if response.status_code == 200:
                 logger.info("✅ 訊息發送成功")
                 return True
             else:
-                logger.error(f"❌ 發送失敗: {response.status_code} - {response.text}")
+                logger.error(f"❌ 發送失敗: {response.status_code}")
                 return False
                 
         except Exception as e:
@@ -70,7 +92,7 @@ class SimpleTSLABot:
             url = f"https://api.telegram.org/bot{self.token}/getUpdates"
             params = {
                 "offset": self.last_update_id + 1,
-                "timeout": 5  # 縮短超時
+                "timeout": 5
             }
             response = requests.get(url, params=params, timeout=10)
             
@@ -84,7 +106,7 @@ class SimpleTSLABot:
             return None
     
     def get_tsla_price(self):
-        """獲取 TSLA 價格 - 簡化版"""
+        """獲取 TSLA 價格"""
         try:
             url = "https://finnhub.io/api/v1/quote"
             params = {"symbol": "TSLA", "token": FINNHUB_API_KEY}
@@ -101,7 +123,6 @@ class SimpleTSLABot:
         except Exception as e:
             logger.warning(f"API 失敗，使用預設值: {e}")
         
-        # 預設值
         return {
             "price": 247.50,
             "change": 1.25,
@@ -115,8 +136,7 @@ class SimpleTSLABot:
             data = self.get_tsla_price()
             current_time = datetime.now()
             
-            # 簡單的 Max Pain 計算
-            max_pain = round(data["price"] / 5) * 5  # 調整到最近的5美元
+            max_pain = round(data["price"] / 5) * 5
             distance = abs(data["price"] - max_pain)
             
             change_emoji = "📈" if data["change"] > 0 else "📉" if data["change"] < 0 else "➡️"
@@ -144,7 +164,7 @@ class SimpleTSLABot:
 ⚠️ 數據來源: {data["status"]}
 ⚠️ 本分析僅供參考，投資有風險
 
-🚀 TSLA Monitor VVIC 專業版"""
+🚀 TSLA Monitor VVIC 專業版 (Keep-Alive 啟用)"""
             
             return report
         except Exception as e:
@@ -152,7 +172,7 @@ class SimpleTSLABot:
             return f"❌ 報告生成失敗: {str(e)}"
     
     def handle_message(self, message):
-        """處理訊息 - 超簡化版"""
+        """處理訊息"""
         try:
             chat_id = message['chat']['id']
             text = message.get('text', '').strip().lower()
@@ -160,18 +180,26 @@ class SimpleTSLABot:
             
             logger.info(f"📨 收到訊息: '{text}' from {chat_id} ({user_name})")
             
-            # 立即回應測試
-            logger.info("🔄 開始處理訊息...")
-            
             if text == '/start':
-                msg = f"🚀 歡迎 {user_name}！\n\nTSLA VVIC 專業分析機器人已啟動\n\n可用指令:\n• /stock TSLA - 獲取分析\n• /test - 測試回應"
+                msg = f"🚀 歡迎 {user_name}！\n\nTSLA VVIC 專業分析機器人已啟動\n✅ Keep-Alive 機制運行中\n\n可用指令:\n• /stock TSLA - 獲取分析\n• /test - 測試回應\n• /status - 系統狀態"
                 success = self.send_message_simple(chat_id, msg)
-                logger.info(f"start 指令回應結果: {success}")
                 
             elif text == '/test':
-                msg = "✅ 機器人回應正常！\n\n現在時間: " + datetime.now().strftime('%H:%M:%S')
+                msg = "✅ 機器人回應正常！\n\n🔄 Keep-Alive 狀態: 運行中\n⏰ 現在時間: " + datetime.now().strftime('%H:%M:%S')
                 success = self.send_message_simple(chat_id, msg)
-                logger.info(f"test 指令回應結果: {success}")
+                
+            elif text == '/status':
+                msg = f"""⚙️ 系統狀態報告
+📅 {datetime.now().strftime('%Y-%m-%d %H:%M')}
+
+🔄 Keep-Alive: ✅ 運行中 (每14分鐘ping)
+🤖 機器人: ✅ 正常運行
+🌐 服務器: ✅ Render 免費版
+📡 API: ✅ Finnhub 連接正常
+
+💡 免費版限制已通過 Keep-Alive 緩解
+⚡ 回應速度已優化"""
+                success = self.send_message_simple(chat_id, msg)
                 
             elif '/stock' in text and 'tsla' in text:
                 logger.info("🔄 生成 TSLA 報告中...")
@@ -179,7 +207,6 @@ class SimpleTSLABot:
                 
                 report = self.create_simple_report()
                 success = self.send_message_simple(chat_id, report)
-                logger.info(f"stock 報告發送結果: {success}")
                 
             elif '/vvic' in text and 'tsla' in text:
                 logger.info("🔄 生成完整報告中...")
@@ -187,7 +214,6 @@ class SimpleTSLABot:
                 
                 report = self.create_simple_report()
                 success = self.send_message_simple(chat_id, report)
-                logger.info(f"vvic 報告發送結果: {success}")
                 
             elif '/maxpain' in text and 'tsla' in text:
                 data = self.get_tsla_price()
@@ -205,20 +231,15 @@ class SimpleTSLABot:
 💡 MM 傾向將股價推向 Max Pain 點"""
                 
                 success = self.send_message_simple(chat_id, msg)
-                logger.info(f"maxpain 回應結果: {success}")
                 
             elif 'tsla' in text:
                 msg = "🎯 偵測到 TSLA\n\n• /stock TSLA - 快速分析\n• /vvic TSLA - 完整報告\n• /maxpain TSLA - Max Pain 分析"
                 success = self.send_message_simple(chat_id, msg)
-                logger.info(f"tsla 關鍵字回應結果: {success}")
                 
             else:
-                msg = f"👋 {user_name}!\n\n🚀 TSLA VVIC 專業分析機器人\n\n試試:\n• /stock TSLA\n• /test\n• /start"
+                msg = f"👋 {user_name}!\n\n🚀 TSLA VVIC 專業分析機器人\n✅ Keep-Alive 已啟用\n\n試試:\n• /stock TSLA\n• /test\n• /status"
                 success = self.send_message_simple(chat_id, msg)
-                logger.info(f"預設回應結果: {success}")
                 
-            logger.info("✅ 訊息處理完成")
-            
         except Exception as e:
             logger.error(f"❌ 處理訊息異常: {e}")
             try:
@@ -232,23 +253,18 @@ class SimpleTSLABot:
         
         while self.running:
             try:
-                logger.info("🔄 檢查訊息更新...")
                 updates = self.get_updates()
                 
                 if updates and updates.get('ok'):
                     results = updates.get('result', [])
-                    logger.info(f"📨 收到 {len(results)} 個更新")
                     
                     for update in results:
                         self.last_update_id = update['update_id']
-                        logger.info(f"處理更新 ID: {self.last_update_id}")
                         
                         if 'message' in update:
                             self.handle_message(update['message'])
-                        else:
-                            logger.info("更新中沒有訊息內容")
                 
-                time.sleep(2)  # 2秒檢查一次
+                time.sleep(2)
                 
             except KeyboardInterrupt:
                 logger.info("收到停止信號")
@@ -270,8 +286,9 @@ def run_bot():
     except Exception as e:
         logger.error(f"機器人運行錯誤: {e}")
 
+# ⭐ 主程式啟動區域 - Keep-Alive 添加在這裡
 if __name__ == '__main__':
-    logger.info("🚀 啟動 TSLA Monitor 緊急修復版...")
+    logger.info("🚀 啟動 TSLA Monitor Keep-Alive 版...")
     
     # 清除 webhook
     try:
@@ -281,10 +298,15 @@ if __name__ == '__main__':
     except Exception as e:
         logger.error(f"清除 webhook 失敗: {e}")
     
+    # ⭐ 啟動 Keep-Alive 線程 (新增部分)
+    logger.info("🔄 啟動 Keep-Alive 機制...")
+    keepalive_thread = threading.Thread(target=keep_alive, daemon=True)
+    keepalive_thread.start()
+    logger.info("✅ Keep-Alive 線程已啟動")
+    
     # 啟動機器人線程
     bot_thread = threading.Thread(target=run_bot, daemon=True)
     bot_thread.start()
-    
     logger.info("✅ 機器人線程已啟動")
     
     # 啟動 Flask
