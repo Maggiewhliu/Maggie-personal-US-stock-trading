@@ -1281,12 +1281,12 @@ Congress Trading Tracker + Political Impact Analysis"""
 ✅ 完整風險管理框架
 
 💡 核心指令:
-• /vvic TSLA - 完整機構級分析報告
+• /stock TSLA - 完整機構級分析報告
 • /politics - 全市場國會議員交易分析
 • /test - 系統狀態檢查
 • /help - 功能說明
 
-🚀 立即體驗: /vvic TSLA 或 /politics"""
+🚀 立即體驗: /stock TSLA 或 /politics"""
                 
                 self.send_message(chat_id, welcome_msg)
                 
@@ -1330,12 +1330,12 @@ Congress Trading Tracker + Political Impact Analysis"""
                 report = self.generate_political_trading_report()
                 self.send_message(chat_id, report)
                 
-            elif '/vvic' in text:
+            elif '/stock' in text:
                 # 提取股票代號
                 symbol = "TSLA"  # 預設
                 words = text.split()
                 for word in words:
-                    if word.upper() != '/VVIC' and len(word) <= 5 and word.isalpha():
+                    if word.upper() != '/STOCK' and len(word) <= 5 and word.isalpha():
                         symbol = word.upper()
                         break
                 
@@ -1361,7 +1361,7 @@ Congress Trading Tracker + Political Impact Analysis"""
                 help_msg = """📖 VVIC 機構級系統使用指南
 
 🎯 核心功能:
-• /vvic [股票代號] - 機構級完整分析報告
+• /stock [股票代號] - 機構級完整分析報告
 • /politics - 全市場國會議員交易分析
 
 📊 VVIC 報告內容:
@@ -1399,8 +1399,8 @@ Congress Trading Tracker + Political Impact Analysis"""
 政治面數據有披露延遲，不構成投資建議
 
 🚀 開始使用:
-• /vvic TSLA - 特斯拉完整分析
-• /vvic AAPL - 蘋果股票分析  
+• /stock TSLA - 特斯拉完整分析
+• /stock AAPL - 蘋果股票分析  
 • /politics - 全市場政治面分析"""
                 
                 self.send_message(chat_id, help_msg)
@@ -1415,7 +1415,7 @@ Congress Trading Tracker + Political Impact Analysis"""
                     hint_msg = f"""🎯 偵測到 {symbol} 查詢
 
 💡 使用 VVIC 機構級分析:
-• /vvic {symbol} - 完整專業分析
+• /stock {symbol} - 完整專業分析
 • /politics - 全市場國會議員交易
 
 🚀 整合真實 API 數據源
@@ -1426,7 +1426,7 @@ Congress Trading Tracker + Political Impact Analysis"""
 🚀 VVIC 機構級分析系統
 
 💡 快速開始:
-• /vvic TSLA - 機構級完整分析
+• /stock TSLA - 機構級完整分析
 • /politics - 全市場國會議員交易分析
 • /test - 系統狀態  
 • /help - 使用說明
