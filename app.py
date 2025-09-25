@@ -131,7 +131,6 @@ class FreeCongressTracker:
         try:
             # 暫時返回空列表，避免 BeautifulSoup 依賴
             logger.info("House Stock Watcher 爬蟲暫時停用，避免依賴問題")
-    def _extract_option_expiry(self, asset_info: str, ticker: str) -> Optional[str]:
         """嘗試從資產信息中提取期權到期時間"""
         try:
             # 檢查是否為期權交易
