@@ -1069,175 +1069,74 @@ Powered by Multi-Source Real-Time APIs"""
 📊 數據源狀態"""
             
             if congress_data.get("status") == "success":
-                report += f"""
+                congress_transactions = congress_data.get("transactions", [])
+                
+                if congress_transactions and len(congress_transactions) > 0:
+                    report += f"""
 ✅ 數據獲取: 成功
-📊 總交易數: {congress_data.get("total_found", 0)} 筆
-🔄 數據來源: {len(congress_data.get("data_sources", []))} 個免費源
+📊 總交易數: {len(congress_transactions)} 筆
+🔄 數據來源: {', '.join(congress_data.get("data_sources", []))}
 ⏰ 更新時間: {congress_data.get("last_updated", "N/A")}
 
 ━━━━━━━━━━━━━━━━━━━━
-🏛️ 國會議員交易詳細分析"""
-                
-                congress_transactions = congress_data.get("transactions", [])
-                
-                if congress_transactions:
-                    # 統計分析
-                    buy_count = len([t for t in congress_transactions if "purchase" in t.get("transaction_type", "").lower()])
-                    sell_count = len([t for t in congress_transactions if "sale" in t.get("transaction_type", "").lower()])
+🏛️ 最新國會議員交易記錄"""
                     
-                    # 熱門股票統計
-                    ticker_counts = {}
-                    for t in congress_transactions:
-                        ticker = t.get("ticker", "")
-                        if ticker:
-                            ticker_counts[ticker] = ticker_counts.get(ticker, 0) + 1
-                    
-                    top_tickers = sorted(ticker_counts.items(), key=lambda x: x[1], reverse=True)[:5]
-                    
-                    # 黨派分析
-                    party_stats = {"D": 0, "R": 0, "Unknown": 0}
-                    for t in congress_transactions:
-                        party = t.get("party", "Unknown")
-                        party_stats[party] = party_stats.get(party, 0) + 1
-                    
-                    report += f"""
-📊 交易統計概覽:
-• 總交易數: {len(congress_transactions)} 筆
-• 買入交易: {buy_count} 筆 ({buy_count/max(len(congress_transactions),1)*100:.1f}%)
-• 賣出交易: {sell_count} 筆 ({sell_count/max(len(congress_transactions),1)*100:.1f}%)
-• 民主黨: {party_stats.get('D', 0)} 筆
-• 共和黨: {party_stats.get('R', 0)} 筆
-
-📈 熱門交易標的:"""
-                    
-                    for ticker, count in top_tickers:
-                        report += f"""
-• {ticker}: {count} 筆交易"""
-                    
-                    report += f"""
-
-━━━━━━━━━━━━━━━━━━━━
-📋 最新交易記錄:"""
-                    
-                    for i, transaction in enumerate(congress_transactions[:15]):
+                    # 顯示交易記錄
+                    for i, transaction in enumerate(congress_transactions[:10]):
                         chamber_icon = "🏛️" if "sen." in transaction.get("member", "").lower() else "🏢"
                         party_icon = "🔵" if transaction.get("party") == "D" else "🔴" if transaction.get("party") == "R" else "⚪"
                         
                         transaction_type = transaction.get("transaction_type", "")
                         type_icon = "📈" if "purchase" in transaction_type.lower() else "📉" if "sale" in transaction_type.lower() else "🔄"
                         
-                        report += f"""
-{i+1:2d}. {chamber_icon}{party_icon} {transaction['member']}
-    {type_icon} {transaction['ticker']}: {transaction['transaction_type']}
-    💰 {transaction['amount_range']}
-    📅 交易: {transaction['transaction_date']} | 披露: {transaction['disclosure_date']}"""
+                        ticker = transaction.get("ticker", "N/A")
+                        member = transaction.get("member", "N/A")
+                        amount = transaction.get("amount_range", "N/A")
+                        trans_date = transaction.get("transaction_date", "N/A")
+                        disc_date = transaction.get("disclosure_date", "N/A")
                         
-                        # 計算披露延遲
-                        try:
-                            trans_date = datetime.strptime(transaction['transaction_date'], '%Y-%m-%d')
-                            disc_date = datetime.strptime(transaction['disclosure_date'], '%Y-%m-%d')
-                            delay_days = (disc_date - trans_date).days
-                            if delay_days > 45:
-                                report += f"""
-    ⚠️ 延遲披露: {delay_days} 天 (超過法定45天)"""
-                        except:
-                            pass
-                    
-                    # 政治面影響分析
-                    report += f"""
-
-━━━━━━━━━━━━━━━━━━━━
-🎯 政治面市場影響分析
-📊 整體市場情緒: {"偏多" if buy_count > sell_count * 1.2 else "偏空" if sell_count > buy_count * 1.2 else "中性"}
-⚖️ 兩黨交易對比: 民主黨 {party_stats.get('D', 0)} vs 共和黨 {party_stats.get('R', 0)}
-🎯 關鍵觀察點:"""
-                    
-                    # 生成關鍵觀察點
-                    observations = []
-                    
-                    if buy_count > sell_count * 1.5:
-                        observations.append("國會議員普遍看多，買入明顯多於賣出")
-                    elif sell_count > buy_count * 1.5:
-                        observations.append("國會議員賣出壓力較大，可能預示調整")
-                    
-                    if top_tickers:
-                        observations.append(f"科技股 {top_tickers[0][0]} 最受國會議員關注")
-                    
-                    # 檢查重要議員交易
-                    important_members = ["pelosi", "burr", "tuberville"]
-                    for transaction in congress_transactions[:10]:
-                        member_name = transaction.get("member", "").lower()
-                        if any(name in member_name for name in important_members):
-                            observations.append(f"重要議員 {transaction.get('member', '')} 交易 {transaction.get('ticker', '')}")
-                            break
-                    
-                    if not observations:
-                        observations = [
-                            "當前政治面數據顯示市場情緒中性",
-                            "建議持續監控重要議員的交易動向",
-                            "關注選舉周期對交易模式的影響"
-                        ]
-                    
-                    for obs in observations[:5]:
                         report += f"""
-• {obs}"""
+
+{i+1:2d}. {chamber_icon}{party_icon} {member}
+    {type_icon} {ticker}: {transaction_type}
+    💰 {amount}
+    📅 交易: {trans_date} | 披露: {disc_date}"""
+                    
+                    # 統計分析
+                    buy_count = len([t for t in congress_transactions if "purchase" in t.get("transaction_type", "").lower()])
+                    sell_count = len([t for t in congress_transactions if "sale" in t.get("transaction_type", "").lower()])
                     
                     report += f"""
 
 ━━━━━━━━━━━━━━━━━━━━
-💡 政治面交易策略建議
-
-🎯 跟隨策略:
-• 關注高頻交易標的: {', '.join([t[0] for t in top_tickers[:3]])}
-• 重點監控重要議員動向
-• 注意兩黨交易偏向差異
-
-⚠️ 風險提醒:
-• 國會交易有最多45天披露延遲
-• 議員交易不等於內幕消息
-• 政策變化風險需要獨立評估
-• 選舉周期可能影響交易模式
-
-📅 關鍵時點關注:
-• 財政預算討論期間
-• 重大政策法案投票前後  
-• 聯邦利率決議會議
-• 選舉前後政策不確定期
-
-━━━━━━━━━━━━━━━━━━━━
-🔍 深度分析建議
-• 使用 /vvic [股票代號] 獲取特定股票完整分析
-• 關注政策敏感行業：科技、能源、醫療、金融
-• 結合技術面分析驗證政治面信號
-• 建立政治事件日曆追蹤重要時點"""
+📊 交易統計分析
+📈 買入交易: {buy_count} 筆 ({buy_count/max(len(congress_transactions),1)*100:.1f}%)
+📉 賣出交易: {sell_count} 筆 ({sell_count/max(len(congress_transactions),1)*100:.1f}%)
+⚖️ 市場情緒: {"偏多" if buy_count > sell_count * 1.2 else "偏空" if sell_count > buy_count * 1.2 else "中性"}"""
                     
                 else:
                     report += """
-⚠️ 當前無可用的國會交易數據
-🔄 系統正在嘗試從多個免費數據源獲取信息
-💡 建議稍後重試或檢查網絡連接"""
-            
+⚠️ 未獲取到交易數據
+🔍 可能原因: 數據源暫時不可用或網絡問題
+🔄 建議: 稍後重試 /politics"""
             else:
+                error_msg = congress_data.get('error', '未知錯誤')
                 report += f"""
 ❌ 數據獲取失敗
-🔧 錯誤信息: {congress_data.get('error', '未知錯誤')}
+🔧 錯誤信息: {error_msg}
 🔄 建議稍後重試"""
             
             report += f"""
 
 ━━━━━━━━━━━━━━━━━━━━
-⚠️ 政治面投資風險聲明
+⚠️ 重要聲明
 🏛️ 政治面分析具有高度不確定性
 📊 國會交易存在披露延遲和信息滯後
-⚖️ 政策變化可能與議員個人交易無直接關係
 💰 政治面信號不能作為唯一投資依據
-
-本報告僅供政治面風險評估參考，不構成投資建議
 
 ━━━━━━━━━━━━━━━━━━━━
 🏛️ 全市場政治面交易分析系統
-Powered by Multi-Source Free APIs
-Congress Trading Tracker + Political Impact Analysis"""
+Powered by Multi-Source Free APIs"""
             
             logger.info("✅ 全市場政治面分析報告生成完成")
             return report
@@ -1248,13 +1147,9 @@ Congress Trading Tracker + Political Impact Analysis"""
 
 🚨 系統遇到技術問題
 錯誤時間: {datetime.now().strftime('%H:%M:%S')}
+錯誤詳情: {str(e)[:100]}...
 
-🔄 建議操作:
-• 稍後重新發送 /politics
-• 或使用 /test 檢查系統狀態
-• 檢查網絡連接是否正常
-
-錯誤詳情: {str(e)[:100]}..."""
+🔄 建議稍後重試 /politics"""
     
     def handle_message(self, message):
         """處理訊息"""
@@ -1283,9 +1178,8 @@ Congress Trading Tracker + Political Impact Analysis"""
                 # 生成政治面報告
                 report = self.generate_political_trading_report()
                 self.send_message(chat_id, report)
-                return  # 重要：處理完後直接返回
-            
-            if text == '/start':
+                
+            elif text == '/start':
                 welcome_msg = f"""🚀 歡迎使用 VVIC 機構級分析系統
 
 👋 {user_name}，專業機構級股票分析已啟動
