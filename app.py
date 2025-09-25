@@ -131,7 +131,65 @@ class FreeCongressTracker:
         try:
             # 暫時返回空列表，避免 BeautifulSoup 依賴
             logger.info("House Stock Watcher 爬蟲暫時停用，避免依賴問題")
-            return []
+    def _extract_option_expiry(self, asset_info: str, ticker: str) -> Optional[str]:
+        """嘗試從資產信息中提取期權到期時間"""
+        try:
+            # 檢查是否為期權交易
+            asset_lower = asset_info.lower()
+            if not any(keyword in asset_lower for keyword in ['option', 'call', 'put']):
+                return None
+            
+            # 嘗試從資產描述中提取日期模式
+            import re
+            
+            # 常見日期格式模式
+            date_patterns = [
+                r'(\d{1,2})/(\d{1,2})/(\d{4})',  # MM/DD/YYYY
+                r'(\d{4})-(\d{1,2})-(\d{1,2})',  # YYYY-MM-DD  
+                r'(\w{3})\s+(\d{1,2}),?\s+(\d{4})',  # Jan 15, 2025
+                r'(\d{1,2})/(\d{1,2})/(\d{2})',  # MM/DD/YY
+            ]
+            
+            for pattern in date_patterns:
+                match = re.search(pattern, asset_info)
+                if match:
+                    try:
+                        groups = match.groups()
+                        if len(groups) == 3:
+                            # 嘗試解析日期
+                            if '/' in pattern and len(groups[2]) == 4:
+                                # MM/DD/YYYY 格式
+                                return f"{groups[0]}/{groups[1]}/{groups[2]}"
+                            elif '-' in pattern:
+                                # YYYY-MM-DD 格式
+                                return f"{groups[0]}-{groups[1]}-{groups[2]}"
+                            elif pattern.startswith(r'(\w{3})'):
+                                # 月份名稱格式
+                                return f"{groups[0]} {groups[1]}, {groups[2]}"
+                    except:
+                        continue
+            
+            # 如果沒有找到具體日期，嘗試查找期權代碼模式
+            # 期權代碼通常包含到期信息，如 TSLA250117C00200000
+            option_code_pattern = r'([A-Z]{1,5})(\d{6})([CP])(\d{8})'
+            match = re.search(option_code_pattern, asset_info.upper())
+            if match:
+                try:
+                    # 解析期權代碼中的日期
+                    date_part = match.groups()[1]  # YYMMDD
+                    year = int('20' + date_part[:2])
+                    month = int(date_part[2:4])
+                    day = int(date_part[4:6])
+                    return f"{month:02d}/{day:02d}/{year}"
+                except:
+                    pass
+            
+            # 如果是期權但沒有找到到期日，返回通用信息
+            return "待確認"
+            
+        except Exception as e:
+            logger.warning(f"期權到期時間提取錯誤: {e}")
+            return None
             
         except Exception as e:
             logger.warning(f"⚠️ House Stock Watcher 爬蟲錯誤: {e}")
@@ -1055,7 +1113,23 @@ Powered by Multi-Source Real-Time APIs"""
                         party_icon = "🔵" if transaction.get("party") == "D" else "🔴" if transaction.get("party") == "R" else "⚪"
                         
                         transaction_type = transaction.get("transaction_type", "")
-                        type_icon = "📈" if "purchase" in transaction_type.lower() else "📉" if "sale" in transaction_type.lower() else "🔄"
+                        # 中文翻譯
+                        if "purchase" in transaction_type.lower():
+                            type_icon = "📈"
+                            type_text = f"{transaction_type} (買入)"
+                        elif "sale" in transaction_type.lower():
+                            if "partial" in transaction_type.lower():
+                                type_icon = "📉"
+                                type_text = f"{transaction_type} (部分賣出)"
+                            else:
+                                type_icon = "📉"
+                                type_text = f"{transaction_type} (賣出)"
+                        elif "exchange" in transaction_type.lower():
+                            type_icon = "🔄"
+                            type_text = f"{transaction_type} (交換)"
+                        else:
+                            type_icon = "🔄"
+                            type_text = transaction_type
                         
                         ticker = transaction.get("ticker", "N/A")
                         member = transaction.get("member", "N/A")
@@ -1065,10 +1139,17 @@ Powered by Multi-Source Real-Time APIs"""
                         
                         report += f"""
 
-{i+1:2d}. {chamber_icon}{party_icon} {member}
-    {type_icon} {ticker}: {transaction_type}
+{i+1:2d}. {chamber_icon} {member}
+    {type_icon} {ticker}: {type_text}
     💰 {amount}
     📅 交易: {trans_date} | 披露: {disc_date}"""
+                        
+                        # 檢查期權到期時間
+                        asset_info = transaction.get("asset", "")
+                        option_expiry = self._extract_option_expiry(asset_info, ticker)
+                        if option_expiry:
+                            report += f"""
+    ⏰ 期權到期: {option_expiry}"""
                     
                     # 統計分析
                     buy_count = len([t for t in congress_transactions if "purchase" in t.get("transaction_type", "").lower()])
@@ -1080,7 +1161,12 @@ Powered by Multi-Source Real-Time APIs"""
 📊 交易統計分析
 📈 買入交易: {buy_count} 筆 ({buy_count/max(len(congress_transactions),1)*100:.1f}%)
 📉 賣出交易: {sell_count} 筆 ({sell_count/max(len(congress_transactions),1)*100:.1f}%)
-⚖️ 市場情緒: {"偏多" if buy_count > sell_count * 1.2 else "偏空" if sell_count > buy_count * 1.2 else "中性"}"""
+⚖️ 市場情緒: {"偏多" if buy_count > sell_count * 1.2 else "偏空" if sell_count > buy_count * 1.2 else "中性"}
+
+━━━━━━━━━━━━━━━━━━━━
+📋 標識說明
+🏛️ 參議院 | 🏢 眾議院
+🔵 民主黨 | 🔴 共和黨"""
                     
                 else:
                     report += """
