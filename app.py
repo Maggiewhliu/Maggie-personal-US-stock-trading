@@ -9,8 +9,6 @@ import logging
 import os
 import time
 import threading
-import asyncio
-import aiohttp
 from datetime import datetime, timedelta
 from flask import Flask
 import requests
@@ -18,7 +16,6 @@ import json
 import math
 import statistics
 from typing import Dict, List, Optional, Tuple
-import pandas as pd
 from bs4 import BeautifulSoup
 
 # API Configuration
