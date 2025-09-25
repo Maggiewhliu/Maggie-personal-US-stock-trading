@@ -16,7 +16,6 @@ import json
 import math
 import statistics
 from typing import Dict, List, Optional, Tuple
-from bs4 import BeautifulSoup
 
 # API Configuration
 BOT_TOKEN = '7976625561:AAG6VcZ0dE5Bg99wMACBezkmgWvnwmNAmgI'
@@ -128,43 +127,15 @@ class FreeCongressTracker:
         return []
     
     def _scrape_house_stock_watcher_all(self) -> List[Dict]:
-        """爬取 House Stock Watcher 全部交易"""
+        """爬取 House Stock Watcher 全部交易（簡化版）"""
         try:
-            url = "https://housestockwatcher.com/summary"
-            
-            response = self.session.get(url, timeout=15)
-            if response.status_code != 200:
-                return []
-            
-            soup = BeautifulSoup(response.content, 'html.parser')
-            table = soup.find('table', class_='table')
-            if not table:
-                return []
-            
-            formatted_data = []
-            rows = table.find_all('tr')[1:]  # 跳過標題行
-            
-            for row in rows[:30]:  # 最多30筆
-                cols = row.find_all('td')
-                if len(cols) >= 7:
-                    formatted_data.append({
-                        "member": cols[0].get_text(strip=True),
-                        "ticker": cols[1].get_text(strip=True),
-                        "transaction_type": cols[2].get_text(strip=True),
-                        "amount_range": cols[3].get_text(strip=True),
-                        "transaction_date": cols[4].get_text(strip=True),
-                        "disclosure_date": cols[5].get_text(strip=True),
-                        "asset": f"{cols[1].get_text(strip=True)} Stock",
-                        "chamber": "House",
-                        "source": "house_stock_watcher"
-                    })
-            
-            return formatted_data
+            # 暫時返回空列表，避免 BeautifulSoup 依賴
+            logger.info("House Stock Watcher 爬蟲暫時停用，避免依賴問題")
+            return []
             
         except Exception as e:
             logger.warning(f"⚠️ House Stock Watcher 爬蟲錯誤: {e}")
-        
-        return []
+            return []
     
     def _get_unusual_whales_all(self) -> List[Dict]:
         """獲取 Unusual Whales 全部國會交易"""
