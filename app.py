@@ -1146,10 +1146,13 @@ Powered by Multi-Source Real-Time APIs"""
                         
                         # 檢查期權到期時間
                         asset_info = transaction.get("asset", "")
-                        option_expiry = self._extract_option_expiry(asset_info, ticker)
-                        if option_expiry:
-                            report += f"""
-    ⏰ 期權到期: {option_expiry}"""
+                        if "option" in asset_info.lower() and any(date in asset_info for date in ["2024", "2025"]):
+                            # 簡單提取日期信息
+                            import re
+                            date_match = re.search(r'(\d{1,2}/\d{1,2}/\d{4})', asset_info)
+                            if date_match:
+                                report += f"""
+    ⏰ 期權到期: {date_match.group(1)}"""
                     
                     # 統計分析
                     buy_count = len([t for t in congress_transactions if "purchase" in t.get("transaction_type", "").lower()])
