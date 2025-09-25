@@ -1265,6 +1265,26 @@ Congress Trading Tracker + Political Impact Analysis"""
             
             logger.info(f"📨 收到訊息: '{text}' from {user_name}")
             
+            # 處理 /politics 指令（必須在其他條件之前）
+            if text == '/politics':
+                processing_msg = """🔄 政治面交易分析系統啟動中...
+
+🏛️ 正在分析全市場政治面數據:
+   📊 Capitol Trades 免費API 連接中...
+   🏢 House Stock Watcher 數據爬取...
+   🐋 Unusual Whales 免費端點查詢...
+   📋 多源國會交易數據整合中...
+   🎯 政治影響評估計算中...
+   
+⚡ 預計需要 10-15 秒，請稍候..."""
+                
+                self.send_message(chat_id, processing_msg)
+                
+                # 生成政治面報告
+                report = self.generate_political_trading_report()
+                self.send_message(chat_id, report)
+                return  # 重要：處理完後直接返回
+            
             if text == '/start':
                 welcome_msg = f"""🚀 歡迎使用 VVIC 機構級分析系統
 
