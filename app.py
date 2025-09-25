@@ -1157,8 +1157,9 @@ Powered by Multi-Source Free APIs"""
             
             logger.info(f"📨 收到訊息: '{text}' from {user_name}")
             
-            # 處理 /politics 指令（必須在其他條件之前）
+            # 處理 /politics 指令（最高優先級）
             if text == '/politics':
+                logger.info("處理 /politics 指令")
                 processing_msg = """🔄 政治面交易分析系統啟動中...
 
 🏛️ 正在分析全市場政治面數據:
@@ -1175,8 +1176,10 @@ Powered by Multi-Source Free APIs"""
                 # 生成政治面報告
                 report = self.generate_political_trading_report()
                 self.send_message(chat_id, report)
+                return
                 
-            elif text == '/start':
+            # 處理 /start 指令
+            if text == '/start':
                 welcome_msg = f"""🚀 歡迎使用 VVIC 機構級分析系統
 
 👋 {user_name}，專業機構級股票分析已啟動
