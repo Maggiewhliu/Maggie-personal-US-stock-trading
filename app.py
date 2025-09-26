@@ -880,16 +880,16 @@ Powered by Multi-Source Free APIs"""
             
             logger.info(f"📨 收到訊息: '{text}' from {user_name}")
             
-            # 新增：處理技術面分析指令
-            if '/tech' in text:
+            # 處理股票分析指令（改為 /stock）
+            if '/stock' in text:
                 symbol = "TSLA"
                 words = text.split()
                 for word in words:
-                    if word.upper() != '/TECH' and len(word) <= 5 and word.isalpha():
+                    if word.upper() != '/STOCK' and len(word) <= 5 and word.isalpha():
                         symbol = word.upper()
                         break
                 
-                logger.info(f"處理 /tech {symbol} 指令")
+                logger.info(f"處理 /stock {symbol} 指令")
                 processing_msg = f"""🔄 {symbol} 增強技術面分析啟動中...
 
 📊 正在獲取技術指標:
@@ -933,11 +933,11 @@ Powered by Multi-Source Free APIs"""
 ✅ 多源免費數據整合
 
 💡 核心指令:
-- /tech TSLA - 增強技術面分析
+- /stock TSLA - 增強技術面分析
 - /politics - 全市場國會交易分析
 - /test - 系統狀態
 
-🚀 立即體驗: /tech TSLA"""
+🚀 立即體驗: /stock TSLA"""
                 
                 self.send_message(chat_id, welcome_msg)
                 
@@ -961,7 +961,7 @@ Powered by Multi-Source Free APIs"""
 🚀 VVIC 機構級分析系統
 
 💡 快速開始:
-- /tech TSLA - 增強技術面分析
+- /stock TSLA - 增強技術面分析
 - /politics - 全市場國會交易分析
 - /test - 系統狀態  
 
