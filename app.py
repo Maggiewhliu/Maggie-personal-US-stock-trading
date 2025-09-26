@@ -670,4 +670,7 @@ class EnhancedVVICDataProvider:
                         is_dark_pool = True
                         dark_type = "Block"
                         break
-                    elif cond in dark
+                    elif cond in dark_pool_indicators['other_dark']:
+                        is_dark_pool = True
+                        dark_type = "Other"
+                        break
