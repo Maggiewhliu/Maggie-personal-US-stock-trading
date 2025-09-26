@@ -674,3 +674,49 @@ class EnhancedVVICDataProvider:
                         is_dark_pool = True
                         dark_type = "Other"
                         break
+                
+                if size >= 10000:
+                    trade_value = size * price
+                    analysis_result["large_block_trades"].append({
+                        "size": size,
+                        "price": price,
+                        "value": trade_value,
+                        "timestamp": timestamp,
+                        "exchange": exchange,
+                        "conditions": conditions,
+                        "is_dark_pool": is_dark_pool,
+                        "dark_type": dark_type
+                    })
+                
+                if is_dark_pool:
+                    analysis_result["dark_pool_trades"] += 1
+                    analysis_result["total_dark_volume"] += size
+                    analysis_result["total_dark_value"] += size * price
+                    
+                    if dark_type in analysis_result["dark_pool_venues"]:
+                        analysis_result["dark_pool_venues"][dark_type]["trades"] += 1
+                        analysis_result["dark_pool_venues"][dark_type]["volume"] += size
+                    else:
+                        analysis_result["dark_pool_venues"][dark_type] = {
+                            "trades": 1,
+                            "volume": size
+                        }
+            
+            total_volume = sum(t.get("size", 0) for t in trades)
+            analysis_result["dark_pool_ratio"] = (analysis_result["total_dark_volume"] / max(total_volume, 1)) * 100
+            analysis_result["dark_trade_ratio"] = (analysis_result["dark_pool_trades"] / max(len(trades), 1)) * 100
+            
+            if analysis_result["dark_pool_ratio"] > 40:
+                analysis_result["suspicious_patterns"].append("暗池交易比例異常高 (>40%)")
+            
+            large_blocks = [t for t in analysis_result["large_block_trades"] if t["size"] >= 50000]
+            if len(large_blocks) > 5:
+                analysis_result["suspicious_patterns"].append(f"發現 {len(large_blocks)} 筆超大宗交易")
+            
+            analysis_result["large_block_trades"] = sorted(
+                analysis_result["large_block_trades"], 
+                key=lambda x: x["size"], 
+                reverse=True
+            )[:10]
+            
+            return {**analysis_result, "status": "success"}
